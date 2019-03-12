@@ -183,12 +183,12 @@ def lexSynacticKeyword(str):
             or lexWord(str, "unquote")
             or lexWord(str, "unquote-splicing"))
 
-def lexVariable(str):
-    if LispLexerDebug : print("lexVariable(%s)" % str)
-    if not lexSynacticKeyword(str):
-        return lexIdentifier(str)
-    else:
-        return False
+# def lexVariable(str):
+#     if LispLexerDebug : print("lexVariable(%s)" % str)
+#     if not lexSynacticKeyword(str):
+#         return lexIdentifier(str)
+#     else:
+#         return False
 
 def lexBoolean(str):
     if LispLexerDebug : print("lexBoolean(%s)" % str)
@@ -253,7 +253,7 @@ def lexSign(str):
             or lexEmpty(str))
 
 def lexUInteger(str, base):
-    if LispLexerDebug : print("lexIdentifier(%s, %s)" % (str, base))
+    if LispLexerDebug : print("lexUInteger(%s, %s)" % (str, base))
     return lexCompose(str, [lambda x: lexMultiple(x, 1, lambda y: lexDigit(y, base)),
                             lambda x: lexMultiple(x, 0, lambda y: lexSpecificCharacter(y, "#"))])
 
@@ -530,6 +530,157 @@ def parseDatum(tokens):
 ###############################################################################
 ## Expression Parsing
 
+def parseSpecificIdentifier(tokens, id):
+    identifier = parseTokenType(tokens, [LispTokenTypes.Identifier])
+    if not identifier or identifier.token[0].text != id:
+        return False
+    else:
+        return identifier
+
+def parseSExp(tokens, bodyParseList):
+    return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               lambda x: lexCompose(x, bodyParseList, init=[]),
+                               lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                      init = [])
+
+def parseSExpWithId(tokens, id, bodyParseList):
+    return parseSExp(tokens, [lambda x: parseSpecificIdentifier(x, id)] + bodyParseList)
+    
+def parseQuotation(tokens):
+    return (lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.Quote]),
+                                parseDatum],
+                       init = [])
+            or lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                                   lambda x: parseSpecificIdentifier(x, "quote"),
+                                   parseDatum,
+                                   lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                          init = []))
+
+def parseSelfEvaluating(tokens):
+    return parseTokenType(tokens, [LispTokenTypes.Boolean, LispTokenTypes.Number,
+                                   LispTokenTypes.Character, LispTokenTypes.String])
+
+def parseLitteral(tokens):
+    if LispLexerDebug : print("parseLitteral(%s)" % tokens)
+    return parseQuotation(tokens) or parseLitteral(tokens)
+
+def parseVariable(tokens):
+    if LispLexerDebug : print("parseVariable(%s)" % tokens)
+    id = parseTokenType(tokens, [LispTokenTypes.Identifier])
+    if id and not lexSynacticKeyword(id.token[0].text):
+        return id
+    else:
+        return False
+
+def parseOperator(tokens):
+    return parseExpression(tokens)
+
+def parseOperands(tokens):
+    return lexMultiple(tokens, 0, parseExpression, init=[])
+
+def parseProcedureCall(tokens):
+    if LispLexerDebug : print("parseProcedureCall(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               parseOperator,
+                               parseOperands,
+                               lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                      init=[])
+
+def parseFormals(tokens):
+    if LispLexerDebug : print("parseFormals(%s)" % tokens)
+    return (lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                                lambda x: lexMultiple(x, 0, parseVariable, init=[]),
+                                lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                       init=[])
+            or parseVariable(tokens)
+            or lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                                   lambda x: lexMultiple(x, 1, parseVariable, init=[]),
+                                   lambda x: parseTokenType(x, [LispTokenTypes.Dot]),
+                                   parseVariable,
+                                   lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                          init=[]))
+
+def parseDefinition(tokens):
+    if LispLexerDebug : print("parseDefinition(%s)" % tokens)
+    return False #todo
+
+def parseCommand(tokens):
+    return parseExpression(tokens)
+
+def parseSequence(tokens):
+    if LispLexerDebug : print("parseSequence(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: lexMultiple(x, 0, parseCommand, init=[]),
+                               parseExpression],
+                      init=[])
+
+def parseBody(tokens):
+    if LispLexerDebug : print("parseBody(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: lexMultiple(x, 0, parseDefinition, init=[]),
+                               parseSequence],
+                      init=[])
+
+def parseLambdaExpression(tokens):
+    if LispLexerDebug : print("parseLambdaExpression(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               parseFormals,
+                               parseBody,
+                               lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                      init=[])
+
+def parseTest(tokens):
+    if LispLexerDebug : print("parseTest(%s)" % tokens)
+    return parseExpression(tokens)
+
+def parseConsequent(tokens):
+    if LispLexerDebug : print("parseConsequent(%s)" % tokens)
+    return parseExpression(tokens)
+
+def parseAlternate(tokens):
+    if LispLexerDebug : print("parseAlternate(%s)" % tokens)
+    return parseExpression(tokens) or LexResult([], tokens) # or empty
+
+def parseConditional(tokens):
+    if LispLexerDebug : print("parseConditional(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               lambda x: parseSpecificIdentifier(x, "lambda"),
+                               parseTest,
+                               parseConsequent,
+                               parseAlternate,
+                               lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                      init=[])
+
+def parseAssignement(tokens):
+    if LispLexerDebug : print("parseAssignement(%s)" % tokens)
+    return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               lambda x: parseSpecificIdentifier(x, "set!"),
+                               parseVariable,
+                               parseExpression,
+                               lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
+                      init=[])
+
+def parseDerivedExpression(tokens):
+    if LispLexerDebug : print("parseDerivedExpression(%s)" % tokens)
+    return False
+
+def parseMacroUse(tokens):
+    if LispLexerDebug : print("parseMacroUse(%s)" % tokens)
+    return False
+
+def parseMacroBlock(tokens):
+    if LispLexerDebug : print("parseMacroBlock(%s)" % tokens)
+    return False
+
+def parseExpression(tokens):
+    if LispLexerDebug : print("parseExpression(%s)" % tokens)
+    return (parseVariable(tokens)
+            or parseLitteral(tokens)
+            or parseProcedureCall(tokens)
+            or parseLambdaExpression(tokens)
+            or parseConditional(tokens)
+            or parseAssignement(tokens)
+            or parseDerivedExpression(tokens)
+            or parseMacroUse(tokens)
+            or parseMacroBlock(tokens))
 
 
 ###############################################################################
@@ -637,14 +788,14 @@ class TestLispLex(unittest.TestCase):
         self.assertFalse(lexSynacticKeyword("1234"))
         self.assertFalse(lexSynacticKeyword("allo"))
 
-    def testVariable(self):
-        self.assertTrue(lexVariable("allo"))
-        self.assertTrue(lexVariable("allo?"))
-        self.assertTrue(lexVariable("<allo>?"))
-        self.assertTrue(lexVariable("<define>?"))
-        self.assertTrue(lexVariable("defin?"))
-        self.assertFalse(lexVariable("define?"))
-        self.assertFalse(lexVariable("if?"))
+    # def testVariable(self):
+    #     self.assertTrue(lexVariable("allo"))
+    #     self.assertTrue(lexVariable("allo?"))
+    #     self.assertTrue(lexVariable("<allo>?"))
+    #     self.assertTrue(lexVariable("<define>?"))
+    #     self.assertTrue(lexVariable("defin?"))
+    #     self.assertFalse(lexVariable("define?"))
+    #     self.assertFalse(lexVariable("if?"))
 
     def testBoolean(self):
         self.assertTrue(lexBoolean("#f"))
@@ -842,6 +993,21 @@ class TestLispLex(unittest.TestCase):
     def testParseDatum(self):
         self.assertTrue(parseDatum(parseTokens(",@(allo ,(1 2 . nil) #(1 2 3))")).rest == [])
         self.assertFalse(parseDatum(parseTokens(",@(allo ,(1 2 . nil) #(1 2 . 3))")))
+
+    def testParseQuotation(self):
+        self.assertTrue(parseQuotation(parseTokens("'(allo 13 . 4)")).rest == [])
+        self.assertTrue(parseQuotation(parseTokens("(quote (allo 13 4))")).rest == [])
+        self.assertTrue(parseQuotation(parseTokens("(quote `(allo 13 4))")).rest == [])
+
+    def testParseVariable(self):
+        self.assertTrue(parseVariable(parseTokens("allo")))
+        self.assertTrue(parseVariable(parseTokens("allo?")))
+        self.assertTrue(parseVariable(parseTokens("<allo>?")))
+        self.assertTrue(parseVariable(parseTokens("<define>?")))
+        self.assertTrue(parseVariable(parseTokens("defin?")))
+        self.assertFalse(parseVariable(parseTokens("define?")))
+        self.assertFalse(parseVariable(parseTokens("if?")))
+
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
