@@ -1008,6 +1008,31 @@ class TestLispLex(unittest.TestCase):
         self.assertFalse(parseVariable(parseTokens("define?")))
         self.assertFalse(parseVariable(parseTokens("if?")))
 
+    def testParseSExp(self):
+        self.assertTrue(parseSExp(parseTokens("(hello world)"), [lambda x: parseSpecificIdentifier(x, "hello"),
+                                                                 lambda x: parseSpecificIdentifier(x, "world")]))
+
+# parseSExpWithId(tokens, id, bodyParseList):
+# parseSelfEvaluating(tokens):
+# parseLitteral(tokens):
+# parseOperator(tokens):
+# parseOperands(tokens):
+# parseProcedureCall(tokens):
+# parseFormals(tokens):
+# parseDefinition(tokens):
+# parseCommand(tokens):
+# parseSequence(tokens):
+# parseBody(tokens):
+# parseLambdaExpression(tokens):
+# parseTest(tokens):
+# parseConsequent(tokens):
+# parseAlternate(tokens):
+# parseConditional(tokens):
+# parseAssignement(tokens):
+# parseDerivedExpression(tokens):
+# parseMacroUse(tokens):
+# parseMacroBlock(tokens):
+# parseExpression(tokens):
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
