@@ -562,7 +562,7 @@ def parseSelfEvaluating(tokens):
 
 def parseLitteral(tokens):
     if LispLexerDebug : print("parseLitteral(%s)" % tokens)
-    return parseQuotation(tokens) or parseLitteral(tokens)
+    return parseQuotation(tokens) or parseSelfEvaluating(tokens)
 
 def parseVariable(tokens):
     if LispLexerDebug : print("parseVariable(%s)" % tokens)
@@ -604,14 +604,9 @@ def parseDefinition(tokens):
     if LispLexerDebug : print("parseDefinition(%s)" % tokens)
     return False #todo
 
-def parseCommand(tokens):
-    return parseExpression(tokens)
-
 def parseSequence(tokens):
     if LispLexerDebug : print("parseSequence(%s)" % tokens)
-    return lexCompose(tokens, [lambda x: lexMultiple(x, 0, parseCommand, init=[]),
-                               parseExpression],
-                      init=[])
+    return lexMultiple(tokens, 1, parseCommand, init=[])
 
 def parseBody(tokens):
     if LispLexerDebug : print("parseBody(%s)" % tokens)
@@ -622,6 +617,7 @@ def parseBody(tokens):
 def parseLambdaExpression(tokens):
     if LispLexerDebug : print("parseLambdaExpression(%s)" % tokens)
     return lexCompose(tokens, [lambda x: parseTokenType(x, [LispTokenTypes.LParen]),
+                               lambda x: parseSpecificIdentifier(x, "lambda"),
                                parseFormals,
                                parseBody,
                                lambda x: parseTokenType(x, [LispTokenTypes.RParen])],
@@ -1012,18 +1008,46 @@ class TestLispLex(unittest.TestCase):
         self.assertTrue(parseSExp(parseTokens("(hello world)"), [lambda x: parseSpecificIdentifier(x, "hello"),
                                                                  lambda x: parseSpecificIdentifier(x, "world")]))
 
-# parseSExpWithId(tokens, id, bodyParseList):
-# parseSelfEvaluating(tokens):
-# parseLitteral(tokens):
-# parseOperator(tokens):
-# parseOperands(tokens):
-# parseProcedureCall(tokens):
-# parseFormals(tokens):
-# parseDefinition(tokens):
-# parseCommand(tokens):
-# parseSequence(tokens):
-# parseBody(tokens):
-# parseLambdaExpression(tokens):
+    def testParseSExpWithId(self):
+        self.assertTrue(parseSExpWithId(parseTokens("(lambda x)"), "lambda", [lambda x: parseSpecificIdentifier(x, "x")]))
+
+    def testParseSelfEvaluating(self):
+        self.assertTrue(parseSelfEvaluating(parseTokens("#t")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("#f")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("1.134e-10-123i")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("#b1010011")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("#xABCDEF")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("#\\?")))
+        self.assertTrue(parseSelfEvaluating(parseTokens("\"hello \\\"world\\\"\"")))
+
+    def testParseLitteral(self):
+        self.assertTrue(parseLitteral(parseTokens("'(hello world)")))
+        self.assertTrue(parseLitteral(parseTokens("(quote (hello world))")))
+        self.assertTrue(parseLitteral(parseTokens("(quote '(hello world))")))
+        self.assertFalse(parseLitteral(parseTokens("(quote '(hello world)")))
+        self.assertTrue(parseLitteral(parseTokens("#t")))
+        self.assertTrue(parseLitteral(parseTokens("#o1234567")))
+        self.assertFalse(parseLitteral(parseTokens("#o12345678")))
+        self.assertFalse(parseLitteral(parseTokens("#a")))
+
+    def testParseProcedureCall(self):
+        self.assertTrue(parseProcedureCall(parseTokens("(fact! 10)")))
+        self.assertTrue(parseProcedureCall(parseTokens("(thunk)")))
+        self.assertTrue(parseProcedureCall(parseTokens("(thunk  )")))
+        self.assertTrue(parseProcedureCall(parseTokens("(fib 1 2)")))
+        self.assertTrue(parseProcedureCall(parseTokens("(map (lambda (x) (+ x 1)) '(1 2 3 4 5))")))
+        self.assertFalse(parseProcedureCall(parseTokens("(lambda (lambda (x) (+ x 1)) '(1 2 3 4 5))")))
+        self.assertFalse(parseProcedureCall(parseTokens("(if #t 1 2)")))
+        self.assertFalse(parseProcedureCall(parseTokens("()")))
+        
+    def testParseLambdaExpression(self):
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda (x) x)")))
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda (x) (+ x 1))")))
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda (x y z) (+ x y z))")))
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda (x . rest) (foldl + x rest))")))
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda () (print \"hello world\"))")))
+        self.assertTrue(parseLambdaExpression(parseTokens("(lambda () (print 'test) (newline) (print 'test2))")))
+        
 # parseTest(tokens):
 # parseConsequent(tokens):
 # parseAlternate(tokens):
@@ -1033,6 +1057,7 @@ class TestLispLex(unittest.TestCase):
 # parseMacroUse(tokens):
 # parseMacroBlock(tokens):
 # parseExpression(tokens):
+# parseDefinition(tokens):
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
