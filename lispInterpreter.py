@@ -471,14 +471,23 @@ def parseTokens(str):
     return tokens
 
 ###############################################################################
+## AST definitions
+
+class LispAST:
+    def __init__(self, text):
+        self.text = text
+    def __repr__(self):
+        return "LispAST(text: \"%s\")" % (self.text)
+
+###############################################################################
 ## Datum Parsing (read)
 
-class LispDatum:
+class LispAST_Datum:
     def __init__(self, tokens, rest):
         self.tokens = tokens
         self.rest = rest
     def __repr__(self):
-        return "LispDatum(%s, \"%s\")" % (self.tokens, self.rest)
+        return "LispAST_Datum(%s, \"%s\")" % (self.tokens, self.rest)
 
 def parseTokenType(tokens, types):
     if not tokens or len(tokens) == 0 or not isinstance(tokens[0], LispToken):
@@ -586,6 +595,9 @@ def parseFormals(tokens):
                                   lambda x: parseTokenType(x, [LispTokenTypes.Dot]),
                                    parseVariable]))
 
+def parseCommand(tokens):
+    return parseExpression(tokens);
+
 def parseSequence(tokens):
     if LispLexerDebug : print("parseSequence(%s)" % tokens)
     return lexMultiple(tokens, 1, parseCommand, init=[])
@@ -678,11 +690,6 @@ def parseMacroUse(tokens):
     if LispLexerDebug : print("parseMacroUse(%s)" % tokens)
     return parseSExp(tokens, [parseKeyword,
                               lambda x: lexMultiple(x, 0, parseDatum, init=[])])
-
-def parseSyntaxSpec(tokens):
-    # return parseSExp(tokens, [parseKeyword, parseTransformerSpec])
-    return False # todo...
-
 def parseMacroBlock(tokens):
     if LispLexerDebug : print("parseMacroBlock(%s)" % tokens)
     return (parseSExpWithId(tokens, "let-syntax",
@@ -710,9 +717,37 @@ def parseExpression(tokens):
             or parseMacroUse(tokens)
             or parseMacroBlock(tokens))
 
+def parseDefFormals(tokens):
+    return (lexMultiple(tokens, 0, parseVariable, init=[])
+            or lexCompose(tokens, [lambda x: lexMultiple(x, 0, parseVariable),
+                                   lambda x: parseSpecificIdentifier(x, LispTokenTypes.Dot),
+                                   parseVariable]))
+    
 def parseDefinition(tokens):
     if LispLexerDebug : print("parseDefinition(%s)" % tokens)
-    return False #todo
+    return (parseSExpWithId(tokens, "define", [parseVariable, parseExpression])
+            or parseSExpWithId(tokens, "define", [lambda x: parseSExp(x, [parseVariable, parseDefFormals]),
+                                                  parseBody])
+            or parseSExpWithId(tokens, "begin", [lambda x: lexMultiple(x, 0, parseDefinition)]))
+
+def parseSyntaxDefinition(tokens):
+    if LispLexerDebug : print("parseSyntaxDefinition(%s)" % tokens)
+    return parseSExpWithId(tokens, "define-syntax", [parseKeyword, parseTransformerSpec])
+
+
+def parseCommandOrDefinition(tokens):
+    return (parseCommand(tokens)
+            or parseDefinition(tokens)
+            or parseSyntaxDefinition(tokens)
+            or parseSExpWithId(tokens, "begin", [lambda x: lexMultiple(x, 1, [parseCommandOrDefinition], init=[])]))
+    
+def parseProgram(tokens):
+    if LispLexerDebug : print("parseProgram(%s)" % tokens)
+    return parseCommandOrDefinition(tokens)
+
+def parseSyntaxSpec(tokens):
+    # return parseSExp(tokens, [parseKeyword, parseTransformerSpec])
+    return False # todo...
 
 def parseQuasiQuotation(tokens):
     if LispLexerDebug : print("parseQuasiQuotation(%s)" % tokens)
