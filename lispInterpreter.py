@@ -42,7 +42,7 @@ class LispAST_Number(LispAST):
         return str(self.text)
 
     def eval(self, env):
-        return LispValue(self, LispValueTypes.Number)
+        return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
 class LispAST_token(LispAST):
     def __init__(self, tokenType, text, extra = []):
@@ -56,7 +56,7 @@ class LispAST_token(LispAST):
 
     def eval(self, env):
         valueType = tokenTypeToValue(self.tokenType)
-        return LispValue(self.extra, valueType)
+        return LispEvalContext(env, LispValue(self.extra, valueType))
 
 class LispAST_Variable:
     def __init__(self, id):
@@ -69,10 +69,10 @@ class LispAST_Variable:
     def eval(self, env):
         val = env.get(self.id)
         if val:
-            return val
+            return LispEvalContext(env, val)
         else:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
-            return LispValue(LispAST_token(LispTokenTypes.Boolean, "#f", False), LispValueTypes.Boolean)
+            return LispEvalContext(env, LispValueFalse())
 
 class LispAST_Datum(LispAST):
     def __init__(self, content):
@@ -136,6 +136,33 @@ class LispAST_ProcedureCall(LispAST):
     def __str__(self):
         return "(%s, %s)" % (self.operator, self.operands)
 
+    def eval(self, env):
+        fun     = self.operator.eval(env)
+        if not fun or fun.value.valueType != LispValueTypes.Procedure:
+            print("[LispEvalError] Invalid procedure call operator: %s" % self.operator)
+            return LispValueFalse()
+
+        newEnv  = fun.env.copy()
+        args    = list(map(lambda x: x.eval(env).value, self.operands))
+        funAst  = fun.value.value # context -> value -> proc
+        if funAst.formals.varlist:
+            newEnv[funAst.formals.varlist.id] = args
+        else:
+            hasRest     = funAst.formals.rest
+            varsCount   = len(funAst.formals.vars)
+            validArgNum = (len(args) >= varsCount) if hasRest else (len(args) == varsCount)
+            if not validArgNum:
+                print("[LispEvalError] Invalid argment count for %s. Expecting %d, got %d."
+                      % (self.operator, varsCount, len(args)))
+                return LispValueFalse()
+            for i in range(varsCount):
+                newEnv[funAst.formals.vars[i].id] = args[i]
+            if hasRest:
+                newEnv[funAst.formals.rest.id] = args[varsCount:]
+
+        bodyValue = funAst.body.eval(newEnv)
+        return LispEvalContext(env, bodyValue.value)
+
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
         self.varlist = varlist
@@ -155,6 +182,19 @@ class LispAST_Body(LispAST):
     def __str__(self):
         return "LispAST_Body(%s,%s)" % ( self.definitions, self.body)
 
+    def eval(self, env):
+        newEnv = env.copy()
+        for i in range(len(self.definitions)):
+            pass #todo: add definition to newEnv
+
+        currentEnv  = env.copy()
+        currentVal  = LispValueFalse()
+
+        for b in range(len(self.body)):
+            currentVal = self.body[b].eval(currentEnv)
+            currentEnv = currentVal.env
+        return LispEvalContext(currentEnv, currentVal)
+
 class LispAST_LambdaExpression(LispAST):
     def __init__(self, formals, body):
         self.formals = formals
@@ -163,6 +203,9 @@ class LispAST_LambdaExpression(LispAST):
         return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body)
     def __str__(self):
         return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body)
+
+    def eval(self, env):
+        return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
 
 class LispAST_Conditional(LispAST):
     def __init__(self, test, consequent, alternate):
@@ -774,13 +817,17 @@ class LispValueTypes(Enum):
     Port        = 8
 
 class LispValue:
-    def __init__(self, value, valueType):
+    def __init__(self, value, valueType, env=False):
         self.value = value
         self.valueType = valueType
+        self.env = env
     def __repr__(self):
         return "LispValue(%s,%s)" % ( self.value, self.valueType)
     def __str__(self):
         return "LispValue(%s,%s)" % ( self.value, self.valueType)
+
+def LispValueFalse():
+    return LispValue(LispAST_token(LispTokenTypes.Boolean, "#f", False), LispValueTypes.Boolean)
 
 class LispEvalContext:
     def __init__(self, env, value):
@@ -954,7 +1001,7 @@ def parseVariable(tokens):
     if LispLexerDebug : print("parseVariable(%s)" % tokens)
     id = parseTokenType(tokens, LispTokenTypes.Identifier, LispAST_token)
     if id and not lexSynacticKeyword(id.result[0].text):
-        return LispAST_Variable(id.result[0].text)
+        return ParseResult(LispAST_Variable(id.result[0].text), id.rest)
     else:
         return False
 
