@@ -138,30 +138,36 @@ class LispAST_ProcedureCall(LispAST):
 
     def eval(self, env):
         fun     = self.operator.eval(env)
-        if not fun or fun.value.valueType != LispValueTypes.Procedure:
+        if not fun or (fun.value.valueType != LispValueTypes.Procedure
+                       and fun.value.valueType != LispValueTypes.Primitive):
             print("[LispEvalError] Invalid procedure call operator: %s" % self.operator)
             return LispValueFalse()
 
-        newEnv  = fun.env.copy()
         args    = list(map(lambda x: x.eval(env).value, self.operands))
         funAst  = fun.value.value # context -> value -> proc
-        if funAst.formals.varlist:
-            newEnv[funAst.formals.varlist.id] = args
-        else:
-            hasRest     = funAst.formals.rest
-            varsCount   = len(funAst.formals.vars)
-            validArgNum = (len(args) >= varsCount) if hasRest else (len(args) == varsCount)
-            if not validArgNum:
-                print("[LispEvalError] Invalid argment count for %s. Expecting %d, got %d."
-                      % (self.operator, varsCount, len(args)))
-                return LispValueFalse()
-            for i in range(varsCount):
-                newEnv[funAst.formals.vars[i].id] = args[i]
-            if hasRest:
-                newEnv[funAst.formals.rest.id] = args[varsCount:]
 
-        bodyValue = funAst.body.eval(newEnv)
-        return LispEvalContext(env, bodyValue.value)
+        if fun.value.valueType == LispValueTypes.Primitive:
+            return LispEvalContext(env, funAst.apply(args))
+            
+        else: # LispValueTypes.Primitive
+            newEnv  = fun.env.copy()
+            if funAst.formals.varlist:
+                newEnv[funAst.formals.varlist.id] = args
+            else:
+                hasRest     = funAst.formals.rest
+                varsCount   = len(funAst.formals.vars)
+                validArgNum = (len(args) >= varsCount) if hasRest else (len(args) == varsCount)
+                if not validArgNum:
+                    print("[LispEvalError] Invalid argment count for %s. Expecting %d, got %d."
+                          % (self.operator, varsCount, len(args)))
+                    return LispValueFalse()
+                for i in range(varsCount):
+                    newEnv[funAst.formals.vars[i].id] = args[i]
+                if hasRest:
+                    newEnv[funAst.formals.rest.id] = args[varsCount:]
+        
+            bodyValue = funAst.body.eval(newEnv)
+            return LispEvalContext(env, bodyValue.value)
 
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
@@ -206,6 +212,28 @@ class LispAST_LambdaExpression(LispAST):
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
+
+class LispAST_Primitive(LispAST):
+    def __init__(self, name, pyFun, argCount = False):
+        self.name = name
+        self.pyFun = pyFun
+        self.argCount = argCount
+    def __repr__(self):
+        return "LispAST_Primitive(%%s,%s)" % ( self.name, self.argCount)
+    def __str__(self):
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.argCount)
+
+    def eval(self, env):
+        return LispEvalContext(env, LispValue(self, LispValueTypes.Primitive))
+
+    def apply(self, args):
+        validArgNum = (len(args) == self.argCount) if self.argCount else True
+        if not validArgNum:
+            print("[LispEvalError] Invalid argment count for primitive %s. Expecting %d, got %d."
+                  % (self.name, self.argCount, len(args)))
+            return LispEvalContext([], LispValueFalse())
+        else:
+            return LispEvalContext([], pyFun(*args))
 
 class LispAST_Conditional(LispAST):
     def __init__(self, test, consequent, alternate):
@@ -815,6 +843,7 @@ class LispValueTypes(Enum):
     Number      = 6
     String      = 7
     Port        = 8
+    Primitive   = 9
 
 class LispValue:
     def __init__(self, value, valueType, env=False):
@@ -841,6 +870,14 @@ class LispEvalContext:
 def lispEval(ast):
     primevalEnv = dict()
     return ast.eval(primevalEnv).value
+
+def lispMakeNumberAST(num):
+    sign = 1 if num >= 0 else -1
+    return LispAST_Number(10, True, LispAST_Real(sign, num, 1, "%f" % num), LispAST_Real(1, 1, 1, "1"))
+
+def lispPrimitive_add(*numbers):
+    result = functools.reduce(lambda a,x: a+x, numbers, 0), LispValueTypes.Number
+    return LispValue(lispMakeNumberAST(result), LispValueTypes.Number)
 
 ###############################################################################
 ## Parsing
