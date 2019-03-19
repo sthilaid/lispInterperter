@@ -2,6 +2,7 @@ import sys
 from enum import Enum
 import unittest
 import functools
+import numpy as np
 
 LispLexerDebug = False
 
@@ -147,9 +148,9 @@ class LispAST_ProcedureCall(LispAST):
         funAst  = fun.value.value # context -> value -> proc
 
         if fun.value.valueType == LispValueTypes.Primitive:
-            return LispEvalContext(env, funAst.apply(args))
+            return funAst.apply(args)
             
-        else: # LispValueTypes.Primitive
+        else: # LispValueTypes.Procedure
             newEnv  = fun.env.copy()
             if funAst.formals.varlist:
                 newEnv[funAst.formals.varlist.id] = args
@@ -164,7 +165,7 @@ class LispAST_ProcedureCall(LispAST):
                 for i in range(varsCount):
                     newEnv[funAst.formals.vars[i].id] = args[i]
                 if hasRest:
-                    newEnv[funAst.formals.rest.id] = args[varsCount:]
+                    newEnv[funAst.formals.rest.id] = LispAST_List(args[varsCount:], False)
         
             bodyValue = funAst.body.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
@@ -219,7 +220,7 @@ class LispAST_Primitive(LispAST):
         self.pyFun = pyFun
         self.argCount = argCount
     def __repr__(self):
-        return "LispAST_Primitive(%%s,%s)" % ( self.name, self.argCount)
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.argCount)
     def __str__(self):
         return "LispAST_Primitive(%s,%s)" % ( self.name, self.argCount)
 
@@ -233,7 +234,7 @@ class LispAST_Primitive(LispAST):
                   % (self.name, self.argCount, len(args)))
             return LispEvalContext([], LispValueFalse())
         else:
-            return LispEvalContext([], pyFun(*args))
+            return LispEvalContext([], self.pyFun(*args))
 
 class LispAST_Conditional(LispAST):
     def __init__(self, test, consequent, alternate):
@@ -869,15 +870,65 @@ class LispEvalContext:
 
 def lispEval(ast):
     primevalEnv = dict()
+    primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
+                                 LispValueTypes.Primitive)
+    primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
+                                 LispValueTypes.Primitive)
     return ast.eval(primevalEnv).value
 
-def lispMakeNumberAST(num):
+def lispMakeNumberAST(num, denom=1, imagNum=0, imagDenom=1):
     sign = 1 if num >= 0 else -1
-    return LispAST_Number(10, True, LispAST_Real(sign, num, 1, "%f" % num), LispAST_Real(1, 1, 1, "1"))
+    realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
+    imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
+    numStr = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
+    return LispValue(LispAST_Number(10, True,
+                                    LispAST_Real(sign, num, denom, realStr),
+                                    LispAST_Real(1, imagNum, imagDenom, imagStr),
+                                    numStr),
+                     LispValueTypes.Number)
+
+def lispApplyNumberFun(x, y, f):
+    if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
+        print("[LispEvalError] Invalid argment to addition primitive. Expecting Number/Number and got %s/%s" % (x.valueType, y.valueType))
+        return LispEvalContext([], LispValueFalse())
+
+    realNum, realDenom = f(x.value.real, y.value.real)
+    imagNum, imagDenom = f(x.value.imag, y.value.imag)
+    return lispMakeNumberAST(realNum, realDenom, imagNum, imagDenom)
+
 
 def lispPrimitive_add(*numbers):
-    result = functools.reduce(lambda a,x: a+x, numbers, 0), LispValueTypes.Number
-    return LispValue(lispMakeNumberAST(result), LispValueTypes.Number)
+    def add(x, y):
+        lcd = np.lcm(x.denominator, y.denominator)
+        numX = x.numerator * lcd / x.denominator
+        numY = y.numerator * lcd / y.denominator
+        return (numX+numY, lcd)
+
+    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, add),
+                              numbers,
+                              lispMakeNumberAST(0))
+    return result
+
+def lispPrimitive_subtract(*numbers):
+    def sub(x, y):
+        lcd = np.lcm(x.denominator, y.denominator)
+        numX = x.numerator * lcd / x.denominator
+        numY = y.numerator * lcd / y.denominator
+        return (numX-numY, lcd)
+
+    if (len(numbers) == 1):
+        return lispMakeNumberAST(-numbers[0].value.real.numerator,
+                                 numbers[0].value.real.denominator,
+                                 -numbers[0].value.imag.numerator,
+                                 numbers[0].value.imag.denominator)
+    elif (len(numbers) < 2):
+        print("[LispEvalError] Invalid argment count for '-'. Expecting at least 1, got %d" % len(numbers))
+        return LispEvalContext([], LispValueFalse())
+
+    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, sub),
+                              numbers[1:],
+                              numbers[0])
+    return result
 
 ###############################################################################
 ## Parsing
