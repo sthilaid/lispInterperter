@@ -168,7 +168,7 @@ class LispAST_ProcedureCall(LispAST):
                 for i in range(varsCount):
                     newEnv[funAst.formals.vars[i].id] = args[i]
                 if hasRest:
-                    newEnv[funAst.formals.rest.id] = LispAST_List(args[varsCount:], False)
+                    newEnv[funAst.formals.rest.id] = LispValue(LispAST_List(args[varsCount:], False), LispValueTypes.Pair)
         
             bodyValue = funAst.body.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
@@ -1756,6 +1756,21 @@ class TestLispLex(unittest.TestCase):
 
         valStr = lispEval(parseExpression(parseTokens("\"hello World\"")).result[0])
         self.assertTrue(valStr.value == "hello World")
+
+        valLam = lispEval(parseExpression(parseTokens("(lambda (x) x)")).result[0])
+        self.assertTrue(valLam.valueType == LispValueTypes.Procedure)
+
+        valLamCall1 = lispEval(parseExpression(parseTokens("((lambda (x) x) 1)")).result[0])
+        self.assertTrue(self.isEqual(valLamCall1.value.value, 1, 0))
+
+        valLamCall2 = lispEval(parseExpression(parseTokens("((lambda (x y) y) 1 2)")).result[0])
+        self.assertTrue(self.isEqual(valLamCall2.value.value, 2, 0))
+
+        valLamCall1r = lispEval(parseExpression(parseTokens("((lambda (x . r) r) 1 2 3)")).result[0])
+        self.assertTrue(len(valLamCall1r.value.value.head) == 2)
+
+        valLamCalln = lispEval(parseExpression(parseTokens("((lambda n n) 1 2 3)")).result[0])
+        self.assertTrue(len(valLamCalln.value.value.head) == 3)
         
 
 def runLispTests():
