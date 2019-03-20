@@ -16,7 +16,7 @@ class LispAST:
         raise Exception("'eval' not implemented for type: "+type(self).__name__)
 
 class LispAST_void(LispAST):
-    def __init__(self, _, __, ___):
+    def __init__(self, _=False, __=False, ___=False, ____=False):
         pass
 
 class LispAST_Real:
@@ -73,7 +73,7 @@ class LispAST_Variable:
             return LispEvalContext(env, val)
         else:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
-            return LispEvalContext(env, LispValueFalse())
+            return LispEvalContext(env, LispValueVoid())
 
 class LispAST_Datum(LispAST):
     def __init__(self, content):
@@ -128,6 +128,9 @@ class LispAST_Quotation(LispAST):
     def __str__(self):
         return "'%s" % str(self.datum)
 
+    def eval(self, env):
+        return LispEvalContext(env, self.datum)
+
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
         self.operator = operator
@@ -142,7 +145,7 @@ class LispAST_ProcedureCall(LispAST):
         if not fun or (fun.value.valueType != LispValueTypes.Procedure
                        and fun.value.valueType != LispValueTypes.Primitive):
             print("[LispEvalError] Invalid procedure call operator: %s" % self.operator)
-            return LispValueFalse()
+            return LispValueVoid()
 
         args    = list(map(lambda x: x.eval(env).value, self.operands))
         funAst  = fun.value.value # context -> value -> proc
@@ -161,7 +164,7 @@ class LispAST_ProcedureCall(LispAST):
                 if not validArgNum:
                     print("[LispEvalError] Invalid argment count for %s. Expecting %d, got %d."
                           % (self.operator, varsCount, len(args)))
-                    return LispValueFalse()
+                    return LispValueVoid()
                 for i in range(varsCount):
                     newEnv[funAst.formals.vars[i].id] = args[i]
                 if hasRest:
@@ -192,15 +195,14 @@ class LispAST_Body(LispAST):
     def eval(self, env):
         newEnv = env.copy()
         for i in range(len(self.definitions)):
-            pass #todo: add definition to newEnv
+            newEnv = self.definitions[i].eval(newEnv).env
 
-        currentEnv  = env.copy()
-        currentVal  = LispValueFalse()
+        currentVal  = LispValueVoid()
 
         for b in range(len(self.body)):
-            currentVal = self.body[b].eval(currentEnv)
-            currentEnv = currentVal.env
-        return LispEvalContext(currentEnv, currentVal)
+            currentVal  = self.body[b].eval(newEnv)
+            newEnv      = currentVal.env
+        return LispEvalContext(newEnv, currentVal)
 
 class LispAST_LambdaExpression(LispAST):
     def __init__(self, formals, body):
@@ -232,7 +234,7 @@ class LispAST_Primitive(LispAST):
         if not validArgNum:
             print("[LispEvalError] Invalid argment count for primitive %s. Expecting %d, got %d."
                   % (self.name, self.argCount, len(args)))
-            return LispEvalContext([], LispValueFalse())
+            return LispEvalContext([], LispValueVoid())
         else:
             return LispEvalContext([], self.pyFun(*args))
 
@@ -254,6 +256,29 @@ class LispAST_Assignement(LispAST):
         return "LispAST_Assignement(%s,%s)" % ( self.var, self.exp)
     def __str__(self):
         return "LispAST_Assignement(%s,%s)" % ( self.var, self.exp)
+    
+    def eval(self, env):
+        newEnv = env.copy()
+        expValue = self.exp.eval(newEnv)
+        newEnv[self.var.id] = expValue.value
+        return LispEvalContext(newEnv, LispValueVoid())
+
+class LispAST_Definition:
+    def __init__(self, var, body):
+        self.var = var
+        self.body = body
+    def __repr__(self):
+        return "LispAST_Definition(%s,%s)" % ( self.var, self.body)
+    def __str__(self):
+        return "LispAST_Definition(%s,%s)" % ( self.var, self.body)
+
+class LispAST_Begin:
+    def __init__(self, body):
+        self.body = body
+    def __repr__(self):
+        return "LispAST_Begin(%s)" % ( self.body)
+    def __str__(self):
+        return "LispAST_Begin(%s)" % ( self.body)
 
 ###############################################################################
 ## Lexing
@@ -832,111 +857,13 @@ def parseTokens(str):
     return tokens
 
 ###############################################################################
-## Evaluation and Values
-
-class LispValueTypes(Enum):
-    Boolean     = 0
-    Symbol      = 1
-    Char        = 2
-    Vector      = 3
-    Procedure   = 4
-    Pair        = 5
-    Number      = 6
-    String      = 7
-    Port        = 8
-    Primitive   = 9
-
-class LispValue:
-    def __init__(self, value, valueType, env=False):
-        self.value = value
-        self.valueType = valueType
-        self.env = env
-    def __repr__(self):
-        return "LispValue(%s,%s)" % ( self.value, self.valueType)
-    def __str__(self):
-        return "LispValue(%s,%s)" % ( self.value, self.valueType)
-
-def LispValueFalse():
-    return LispValue(LispAST_token(LispTokenTypes.Boolean, "#f", False), LispValueTypes.Boolean)
-
-class LispEvalContext:
-    def __init__(self, env, value):
-        self.env = env
-        self.value = value
-    def __repr__(self):
-        return "LispEvalContext(%s,%s)" % ( self.env, self.value)
-    def __str__(self):
-        return "LispEvalContext(%s,%s)" % ( self.env, self.value)
-
-def lispEval(ast):
-    primevalEnv = dict()
-    primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
-                                 LispValueTypes.Primitive)
-    primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
-                                 LispValueTypes.Primitive)
-    return ast.eval(primevalEnv).value
-
-def lispMakeNumberAST(num, denom=1, imagNum=0, imagDenom=1):
-    sign = 1 if num >= 0 else -1
-    realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
-    imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
-    numStr = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
-    return LispValue(LispAST_Number(10, True,
-                                    LispAST_Real(sign, num, denom, realStr),
-                                    LispAST_Real(1, imagNum, imagDenom, imagStr),
-                                    numStr),
-                     LispValueTypes.Number)
-
-def lispApplyNumberFun(x, y, f):
-    if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
-        print("[LispEvalError] Invalid argment to addition primitive. Expecting Number/Number and got %s/%s" % (x.valueType, y.valueType))
-        return LispEvalContext([], LispValueFalse())
-
-    realNum, realDenom = f(x.value.real, y.value.real)
-    imagNum, imagDenom = f(x.value.imag, y.value.imag)
-    return lispMakeNumberAST(realNum, realDenom, imagNum, imagDenom)
-
-
-def lispPrimitive_add(*numbers):
-    def add(x, y):
-        lcd = np.lcm(x.denominator, y.denominator)
-        numX = x.numerator * lcd / x.denominator
-        numY = y.numerator * lcd / y.denominator
-        return (numX+numY, lcd)
-
-    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, add),
-                              numbers,
-                              lispMakeNumberAST(0))
-    return result
-
-def lispPrimitive_subtract(*numbers):
-    def sub(x, y):
-        lcd = np.lcm(x.denominator, y.denominator)
-        numX = x.numerator * lcd / x.denominator
-        numY = y.numerator * lcd / y.denominator
-        return (numX-numY, lcd)
-
-    if (len(numbers) == 1):
-        return lispMakeNumberAST(-numbers[0].value.real.numerator,
-                                 numbers[0].value.real.denominator,
-                                 -numbers[0].value.imag.numerator,
-                                 numbers[0].value.imag.denominator)
-    elif (len(numbers) < 2):
-        print("[LispEvalError] Invalid argment count for '-'. Expecting at least 1, got %d" % len(numbers))
-        return LispEvalContext([], LispValueFalse())
-
-    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, sub),
-                              numbers[1:],
-                              numbers[0])
-    return result
-
-###############################################################################
 ## Parsing
 
 class ParseResult:
     def __init__(self, ast, rest):
         self.result = [ast]
-        self.rest = rest
+        self.rest   = rest
+        self.extra  = ast
 
     def __repr__(self):
         return "ParseResult(%s, %s)" % (self.result, self.rest)
@@ -1238,19 +1165,43 @@ def parseExpression(tokens):
             or parseMacroUse(tokens)
             or parseMacroBlock(tokens))
 
-# def parseDefFormals(tokens):
-#     return (lexMultiple(tokens, 0, parseVariable, init=[])
-#             or lexCompose(tokens, [lambda x: lexMultiple(x, 0, parseVariable),
-#                                    lambda x: parseSpecificIdentifier(x, LispTokenTypes.Dot),
-#                                    parseVariable]))
+def parseDefFormals(tokens):
+    result = parseCompose(tokens, [lambda x: parseMultiple(x, 0, parseVariable),
+                                   lambda x: parseSpecificIdentifier(x, LispTokenTypes.Dot),
+                                   parseVariable],
+                          lambda vars,rest : LispAST_Formals(False, vars, rest))
+    if result:
+        return result
+    else:
+        result = parseMultiple(tokens, 0, parseVariable)
+        if result:
+            return ParseResult(LispAST_Formals(False, result.result, False), result.rest)
+        else:
+            return False
     
 def parseDefinition(tokens):
-    return False
-#     if LispLexerDebug : print("parseDefinition(%s)" % tokens)
-#     return (parseSExpWithId(tokens, "define", [parseVariable, parseExpression])
-#             or parseSExpWithId(tokens, "define", [lambda x: parseSExp(x, [parseVariable, parseDefFormals]),
-#                                                   parseBody])
-#             or parseSExpWithId(tokens, "begin", [lambda x: lexMultiple(x, 0, parseDefinition)]))
+    if LispLexerDebug : print("parseDefinition(%s)" % tokens)
+    var     = container()
+    formals = container()
+    body    = container()
+    parsedResult = parseSExp(tokens, "define", [lambda x: assignContainer(parseVariable(x), var),
+                                                lambda x: assignContainer(parseExpression(x), body)],
+                             LispAST_void)
+    if parsedResult:
+        return ParseResult(LispAST_Assignement(var.content, body.content), parsedResult.rest)
+        
+    parsedResult = parseSExp(tokens, "define", [lambda x: parseSExp(x, "", [lambda y: assignContainer(parseVariable(y), var),
+                                                                            lambda y: assignContainer(parseDefFormals(y), formals)],
+                                                                    LispAST_void),
+                                                lambda x: assignContainer(parseBody(x), body)],
+                             LispAST_void)
+    if parsedResult:
+        return ParseResult(LispAST_Assignement(var.content, LispAST_LambdaExpression(formals.content, body.content)),
+                           parsedResult.rest)
+
+    parsedResult = parseSExp(tokens, "begin", [lambda x: parseMultiple(x, 0, parseDefinition)],
+                             LispAST_Begin)
+    return parsedResult
 
 # def parseSyntaxDefinition(tokens):
 #     if LispLexerDebug : print("parseSyntaxDefinition(%s)" % tokens)
@@ -1275,6 +1226,108 @@ def parseDefinition(tokens):
 #     if LispLexerDebug : print("parseQuasiQuotation(%s)" % tokens)
 #     return False #todo
 
+###############################################################################
+## Evaluation and Values
+
+class LispValueTypes(Enum):
+    Boolean     = 0
+    Symbol      = 1
+    Char        = 2
+    Vector      = 3
+    Procedure   = 4
+    Pair        = 5
+    Number      = 6
+    String      = 7
+    Port        = 8
+    Primitive   = 9
+    Void        = 10
+
+class LispValue:
+    def __init__(self, value, valueType, env=False):
+        self.value = value
+        self.valueType = valueType
+        self.env = env
+    def __repr__(self):
+        return "LispValue(%s,%s)" % ( self.value, self.valueType)
+    def __str__(self):
+        return "LispValue(%s,%s)" % ( self.value, self.valueType)
+
+# def LispValueFalse():
+#     return LispValue(LispAST_token(LispTokenTypes.Boolean, "#f", False), LispValueTypes.Boolean)
+
+def LispValueVoid():
+    return LispValue(False, LispValueTypes.Void)
+
+class LispEvalContext:
+    def __init__(self, env, value):
+        self.env = env
+        self.value = value
+    def __repr__(self):
+        return "LispEvalContext(%s,%s)" % ( self.env, self.value)
+    def __str__(self):
+        return "LispEvalContext(%s,%s)" % ( self.env, self.value)
+
+def lispEval(ast):
+    primevalEnv = dict()
+    primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
+                                 LispValueTypes.Primitive)
+    primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
+                                 LispValueTypes.Primitive)
+    return ast.eval(primevalEnv).value
+
+def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
+    sign = 1 if num >= 0 else -1
+    realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
+    imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
+    numStr = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
+    return LispValue(LispAST_Number(10, True,
+                                    LispAST_Real(sign, num, denom, realStr),
+                                    LispAST_Real(1, imagNum, imagDenom, imagStr),
+                                    numStr),
+                     LispValueTypes.Number)
+
+def lispApplyNumberFun(x, y, f):
+    if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
+        print("[LispEvalError] Invalid argment to addition primitive. Expecting Number/Number and got %s/%s" % (x.valueType, y.valueType))
+        return LispEvalContext([], LispValueVoid())
+
+    realNum, realDenom = f(x.value.real, y.value.real)
+    imagNum, imagDenom = f(x.value.imag, y.value.imag)
+    return lispMakeNumberValue(realNum, realDenom, imagNum, imagDenom)
+
+
+def lispPrimitive_add(*numbers):
+    def add(x, y):
+        lcd = np.lcm(x.denominator, y.denominator)
+        numX = x.numerator * lcd / x.denominator
+        numY = y.numerator * lcd / y.denominator
+        return (numX+numY, lcd)
+
+    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, add),
+                              numbers,
+                              lispMakeNumberValue(0))
+    return result
+
+def lispPrimitive_subtract(*numbers):
+    def sub(x, y):
+        lcd = np.lcm(x.denominator, y.denominator)
+        numX = x.numerator * lcd / x.denominator
+        numY = y.numerator * lcd / y.denominator
+        return (numX-numY, lcd)
+
+    if (len(numbers) == 1):
+        return lispMakeNumberValue(-numbers[0].value.real.numerator,
+                                   numbers[0].value.real.denominator,
+                                   -numbers[0].value.imag.numerator,
+                                   numbers[0].value.imag.denominator)
+    elif (len(numbers) < 2):
+        print("[LispEvalError] Invalid argment count for '-'. Expecting at least 1, got %d" % len(numbers))
+        return LispEvalContext([], LispValueVoid())
+
+    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, sub),
+                              numbers[1:],
+                              numbers[0])
+    return result
 
 ###############################################################################
 ## Unit tests
@@ -1681,28 +1734,28 @@ class TestLispLex(unittest.TestCase):
 # parseDefinition(tokens):
 # parseQuasiQuotation(tokens):
 
+    def isEqual(self, n, r, i):
+        return (n.real.numerator / n.real.denominator == r
+                and n.imag.numerator / n.imag.denominator == i)
+
     def testEval(self):
         val = lispEval(parseExpression(parseTokens("12e3+5i")).result[0])
-        self.assertTrue(val.real.numerator == 12000.0)
-        self.assertTrue(val.real.denominator == 1.0)
-        self.assertTrue(val.imag.numerator == 5.0)
-        self.assertTrue(val.imag.denominator == 1.0)
+        self.assertTrue(self.isEqual(val.value, 12000.0, 5.0))
         
         val2 = lispEval(parseExpression(parseTokens("#b101")).result[0])
-        self.assertTrue(val2.real.numerator == 5)
-        self.assertTrue(val2.imag.numerator == 0)
+        self.assertTrue(self.isEqual(val2.value, 5.0, 0.0))
 
         valFalse = lispEval(parseExpression(parseTokens("#f")).result[0])
-        self.assertTrue(valFalse == False)
+        self.assertTrue(valFalse.value == False)
 
         valTrue = lispEval(parseExpression(parseTokens("#t")).result[0])
-        self.assertTrue(valTrue == True)
+        self.assertTrue(valTrue.value == True)
 
         valCharZ = lispEval(parseExpression(parseTokens("#\\Z")).result[0])
-        self.assertTrue(valCharZ == "Z")
+        self.assertTrue(valCharZ.value == "Z")
 
         valStr = lispEval(parseExpression(parseTokens("\"hello World\"")).result[0])
-        self.assertTrue(valStr == "hello World")
+        self.assertTrue(valStr.value == "hello World")
         
 
 def runLispTests():
