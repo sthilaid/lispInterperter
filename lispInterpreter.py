@@ -129,7 +129,8 @@ class LispAST_Quotation(LispAST):
         return "'%s" % str(self.datum)
 
     def eval(self, env):
-        return LispEvalContext(env, self.datum)
+        datumValueType = LispValueTypes.Vector if isinstance(self.datum, LispAST_Vector) else LispValueTypes.Pair
+        return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
@@ -202,7 +203,7 @@ class LispAST_Body(LispAST):
         for b in range(len(self.body)):
             currentVal  = self.body[b].eval(newEnv)
             newEnv      = currentVal.env
-        return LispEvalContext(newEnv, currentVal)
+        return LispEvalContext(newEnv, currentVal.value)
 
 class LispAST_LambdaExpression(LispAST):
     def __init__(self, formals, body):
@@ -1767,22 +1768,31 @@ class TestLispLex(unittest.TestCase):
         self.assertTrue(valLam.valueType == LispValueTypes.Procedure)
 
         valLamCall1 = lispEval(parseExpression(parseTokens("((lambda (x) x) 1)")).result[0])
-        self.assertTrue(self.isEqual(valLamCall1.value.value, 1, 0))
+        self.assertTrue(self.isEqual(valLamCall1.value, 1, 0))
 
         valLamCall2 = lispEval(parseExpression(parseTokens("((lambda (x y) y) 1 2)")).result[0])
-        self.assertTrue(self.isEqual(valLamCall2.value.value, 2, 0))
+        self.assertTrue(self.isEqual(valLamCall2.value, 2, 0))
 
         valLamCall1r = lispEval(parseExpression(parseTokens("((lambda (x . r) r) 1 2 3)")).result[0])
-        self.assertTrue(len(valLamCall1r.value.value.head) == 2)
+        self.assertTrue(len(valLamCall1r.value.head) == 2)
 
         valLamCalln = lispEval(parseExpression(parseTokens("((lambda n n) 1 2 3)")).result[0])
-        self.assertTrue(len(valLamCalln.value.value.head) == 3)
+        self.assertTrue(len(valLamCalln.value.head) == 3)
 
         valLamCallPrim = lispEval(parseExpression(parseTokens("((lambda (x y z) (- x y z)) 10 2 (- 4.4-3i))")).result[0])
-        self.assertTrue(self.isEqual(valLamCallPrim.value.value, 12.4, 3.0))
+        self.assertTrue(self.isEqual(valLamCallPrim.value, 12.4, 3.0))
 
         valLamCallDef = lispEval(parseExpression(parseTokens("((lambda (x) (define (double x) (+ x x)) (double x)) #xFF)")).result[0])
-        self.assertTrue(self.isEqual(valLamCallDef.value.value, 510, 0))
+        self.assertTrue(self.isEqual(valLamCallDef.value, 510, 0))
+
+        valQuote1 = lispEval(parseExpression(parseTokens("'(a b c)")).result[0])
+        self.assertTrue(valQuote1.valueType == LispValueTypes.Pair)
+
+        valQuote2 = lispEval(parseExpression(parseTokens("''(a b c)")).result[0])
+        self.assertTrue(valQuote2.valueType == LispValueTypes.Pair)
+
+        valQuote3 = lispEval(parseExpression(parseTokens("'#(a b c)")).result[0])
+        self.assertTrue(valQuote3.valueType == LispValueTypes.Vector)
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
