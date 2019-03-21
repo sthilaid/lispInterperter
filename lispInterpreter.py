@@ -156,7 +156,7 @@ class LispAST_ProcedureCall(LispAST):
         else: # LispValueTypes.Procedure
             newEnv  = fun.env.copy()
             if funAst.formals.varlist:
-                newEnv[funAst.formals.varlist.id] = args
+                newEnv[funAst.formals.varlist.id] = LispValue(LispAST_List(args, False), LispValueTypes.Pair)
             else:
                 hasRest     = funAst.formals.rest
                 varsCount   = len(funAst.formals.vars)
@@ -1015,8 +1015,12 @@ def parseLitteral(tokens):
 def parseVariable(tokens):
     if LispLexerDebug : print("parseVariable(%s)" % tokens)
     id = parseTokenType(tokens, LispTokenTypes.Identifier, LispAST_token)
-    if id and not lexSynacticKeyword(id.result[0].text):
-        return ParseResult(LispAST_Variable(id.result[0].text), id.rest)
+    if id:
+        keyword = lexSynacticKeyword(id.result[0].text)
+        if not keyword or keyword.result != id.result[0].text:
+            return ParseResult(LispAST_Variable(id.result[0].text), id.rest)
+        else:
+            return False
     else:
         return False
 
@@ -1038,7 +1042,7 @@ def parseFormals(tokens):
                                       lambda x: parseTokenType(x, LispTokenTypes.Dot, LispAST_void),
                                       parseVariable],
                          lambda x,y: LispAST_Formals(False, x, y))
-            or (lambda x: LispAST_Formals(x.result[0], False, False) if x else False)(parseVariable(tokens)))
+            or (lambda x: ParseResult(LispAST_Formals(x.result[0], False, False), x.rest) if x else False)(parseVariable(tokens)))
 
 def parseCommand(tokens):
     return parseExpression(tokens);
@@ -1167,7 +1171,7 @@ def parseExpression(tokens):
 
 def parseDefFormals(tokens):
     result = parseCompose(tokens, [lambda x: parseMultiple(x, 0, parseVariable),
-                                   lambda x: parseSpecificIdentifier(x, LispTokenTypes.Dot),
+                                   lambda x: parseTokenType(x, LispTokenTypes.Dot, LispAST_void),
                                    parseVariable],
                           lambda vars,rest : LispAST_Formals(False, vars, rest))
     if result:
@@ -1175,7 +1179,7 @@ def parseDefFormals(tokens):
     else:
         result = parseMultiple(tokens, 0, parseVariable)
         if result:
-            return ParseResult(LispAST_Formals(False, result.result, False), result.rest)
+            return ParseResult(LispAST_Formals(False, result.result[0], False), result.rest)
         else:
             return False
     
@@ -1642,8 +1646,10 @@ class TestLispLex(unittest.TestCase):
         self.assertTrue(parseVariable(parseTokens("<allo>?")))
         self.assertTrue(parseVariable(parseTokens("<define>?")))
         self.assertTrue(parseVariable(parseTokens("defin?")))
-        self.assertFalse(parseVariable(parseTokens("define?")))
-        self.assertFalse(parseVariable(parseTokens("if?")))
+        self.assertTrue(parseVariable(parseTokens("double")))
+        self.assertTrue(parseVariable(parseTokens("define?")))
+        self.assertTrue(parseVariable(parseTokens("if?")))
+        self.assertFalse(parseVariable(parseTokens("quote")))
 
     def testParseSelfEvaluating(self):
         self.assertTrue(parseSelfEvaluating(parseTokens("#t")))
@@ -1771,7 +1777,12 @@ class TestLispLex(unittest.TestCase):
 
         valLamCalln = lispEval(parseExpression(parseTokens("((lambda n n) 1 2 3)")).result[0])
         self.assertTrue(len(valLamCalln.value.value.head) == 3)
-        
+
+        valLamCallPrim = lispEval(parseExpression(parseTokens("((lambda (x y z) (- x y z)) 10 2 (- 4.4-3i))")).result[0])
+        self.assertTrue(self.isEqual(valLamCallPrim.value.value, 12.4, 3.0))
+
+        valLamCallDef = lispEval(parseExpression(parseTokens("((lambda (x) (define (double x) (+ x x)) (double x)) #xFF)")).result[0])
+        self.assertTrue(self.isEqual(valLamCallDef.value.value, 510, 0))
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
