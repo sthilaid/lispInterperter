@@ -251,6 +251,9 @@ class LispAST_Primitive(LispAST):
         else:
             return LispEvalContext([], self.pyFun(*args))
 
+def lispIsFalse(val):
+    return val.valueType == LispValueTypes.Boolean and not val.value
+
 class LispAST_Conditional(LispAST):
     def __init__(self, test, consequent, alternate):
         self.test = test
@@ -263,7 +266,7 @@ class LispAST_Conditional(LispAST):
 
     def eval(self, env):
         testVal = self.test.eval(env).value
-        isFalse = testVal.valueType == LispValueTypes.Boolean and not testVal.value
+        isFalse = lispIsFalse(testVal)
         if not isFalse:
             return self.consequent.eval(env)
         else:
@@ -300,6 +303,56 @@ class LispAST_Begin:
         return "LispAST_Begin(%s)" % ( self.body)
     def __str__(self):
         return "LispAST_Begin(%s)" % ( self.body)
+
+
+class LispAST_CondClause:
+    def __init__(self, test, body, isAlternateForm):
+        self.test = test
+        self.body = body
+        self.isAlternateForm = isAlternateForm
+    def __repr__(self):
+        return "LispAST_CondClause(%s,%s,%s)" % ( self.test, self.body, self.isAlternateForm)
+    def __str__(self):
+        return "LispAST_CondClause(%s,%s,%s)" % ( self.test, self.body, self.isAlternateForm)
+    def eval(self, env):
+        testVal = self.test.eval(env).value
+        isFalse = lispIsFalse(testVal)
+        if isFalse:
+            return False
+        elif self.isAlternateForm:
+            funVal = self.body.eval(env).value
+            if (funVal.valueType != LispValueTypes.Procedure
+                or len(funVal.value.formals.vars) != 1):
+                print("[LispEvalError] Invalid alternate cond clause: %s" % (self.body))
+                return LispEvalContext(env, LispValueVoid())
+            return LispAST_ProcedureCall(funVal.value, [testVal.value]).eval(env)
+        else:
+            val = LispValueVoid()
+            for e in self.body:
+                val = e.eval(env)
+            return val
+
+class LispAST_Cond:
+    def __init__(self, clauses, elseClause):
+        self.clauses    = clauses
+        self.elseClause = elseClause
+    def __repr__(self):
+        return "LispAST_Cond(%s, %s)" % ( self.clauses, self.elseClause)
+    def __str__(self):
+        return "LispAST_Cond(%s, %s)" % ( self.clauses, self.elseClause)
+
+    def eval(self, env):
+        for clause in self.clauses:
+            clauseVal = clause.eval(env)
+            if clauseVal:
+                return clauseVal
+        if self.elseClause:
+            val = LispValueVoid()
+            for e in self.elseClause:
+                val = e.eval(env)
+            return val
+        else:
+            return LispEvalContext(env, LispValueVoid())
 
 ###############################################################################
 ## Lexing
@@ -944,12 +997,12 @@ def parseMultiple(tokens, n, fn):
     else:
         return False
 
-def parseSpecificIdentifier(tokens, id):
+def parseSpecificIdentifier(tokens, id, isVoid=False):
     identifier = parseTokenType(tokens, LispTokenTypes.Identifier, LispAST_token)
     if not identifier or identifier.result[0].text != id:
         return False
     else:
-        return identifier
+        return identifier if not isVoid else ParseResult(LispAST_void(), identifier.rest)
 
 def parseSExp(tokens, id, bodyParseList, astType, startToken=LispTokenTypes.LParen, endToken=LispTokenTypes.RParen):
     resOffset = 1
@@ -1102,18 +1155,17 @@ def parseAssignement(tokens):
     if LispLexerDebug : print("parseAssignement(%s)" % tokens)
     return parseSExp(tokens, "set!", [parseVariable, parseExpression], LispAST_Assignement)
 
-# def parseCondClause(tokens):
-#     return (parseSExp(tokens, [parseTest, parseSequence])
-#             or parseSExp(tokens, [parseTest])
-#             or parseSExp(tokens, [parseTest,
-#                                   lambda x: parseSpecificIdentifier(x, "=>"),
-#                                   parseExpression]))
+def parseCondClause(tokens):
+    return (parseSExp(tokens, "", [parseTest, parseSequence], lambda t,s: LispAST_CondClause(t,s,False))
+            or parseSExp(tokens, "", [parseTest], lambda t: LispAST_CondClause(t, False, False))
+            or parseSExp(tokens, "", [parseTest,
+                                      lambda x: parseSpecificIdentifier(x, "=>", True),
+                                      parseExpression],
+                         lambda t,e: LispAST_CondClause(t, e, True)))
 
 # def parseCaseClause(tokens):
-#     return parseSExp(tokens, [lambda x: parseSExp(x, [lambda y: lexMultiple(y,
-#                                                                             0,
-#                                                                             parseDatum,
-#                                                                             init=[])]),
+#     return parseSExp(tokens, [lambda x: parseSExp(x, [lambda y: parseMultiple(y, 0, parseDatum)]),
+
 #                               parseSequence])
 
 # def parseBindingSpec(tokens):
@@ -1130,8 +1182,17 @@ def parseAssignement(tokens):
 #     return parseTokenType(tokens, [LispTokenTypes.Identifier])
 
 def parseDerivedExpression(tokens):
-    return False
-#     if LispLexerDebug : print("parseDerivedExpression(%s)" % tokens)
+    if LispLexerDebug : print("parseDerivedExpression(%s)" % tokens)
+    return (parseSExp(tokens, "cond", [lambda x: parseMultiple(x, 0, parseCondClause),
+                                       lambda x: parseSExp(x, "else", [parseSequence], lambda x: x)],
+                      lambda c,e: LispAST_Cond(c, e))
+            or parseSExp(tokens, "cond", [lambda x: parseMultiple(x, 1, parseCondClause)],
+                         lambda cs: LispAST_Cond(cs, False))
+
+            # or parseSExp(tokens, "case",  [parseExpression,
+            #                                lambda x: parseMultiple(x, 0, parseCaseClause),
+            #                                lambda x: parseSExp(x, "else", [parseSequence])])
+            or False)
 #     return (parseSExpWithId(tokens, "cond",     [lambda x: lexMultiple(x, 0, parseCondClause, init=[]),
 #                                                  lambda x: parseSExpWithId(x, "else", [parseSequence])])
 #             or parseSExpWithId(tokens, "cond",  [lambda x: lexMultiple(x, 1, parseCondClause, init=[])])
@@ -1901,6 +1962,18 @@ class TestLispLex(unittest.TestCase):
 
         valCmp6 = lispEval(parseExpression(parseTokens("(if (= #xFF 12) 'yes 'no)")).result[0])
         self.assertTrue(valCmp6.value.text == "no")
+
+        valCond1 = lispEval(parseExpression(parseTokens("(cond (#f 'no))")).result[0])
+        self.assertTrue(valCond1.valueType == LispValueTypes.Void)
+        
+        valCond2 = lispEval(parseExpression(parseTokens("(cond (#f 'no) (#t 'yes) (#t 'maybe?))")).result[0])
+        self.assertTrue(valCond2.value.text == "yes")
+
+        valCond3 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((< 2 1) 'oops) (else 'a 'b 'cee))")).result[0])
+        self.assertTrue(valCond3.value.text == "cee")
+
+        valCond4 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((+ 2 2) => (lambda (x) (+ x 2))) (else 'a 'b 'cee))")).result[0])
+        self.assertTrue(self.isEqual(valCond4.value, 6, 0))
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
