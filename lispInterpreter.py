@@ -29,6 +29,12 @@ class LispAST_Real:
         return "LispAST_Real(%s,%s,%s,\"%s\")" % ( self.sign, self.numerator, self.denominator, self.text)
     def __str__(self):
         return str(self.text)
+    def getFloat(self):
+        return self.sign * self.numerator / self.denominator
+    def equals(self, other):
+        return (np.isclose(self.sign, other.sign)
+                and np.isclose(self.numerator, other.numerator)
+                and np.isclose(self.denominator, other.denominator))
 
 class LispAST_Number(LispAST):
     def __init__(self, radix=10, exactness=True, real=0, imag=0, text=""):
@@ -44,6 +50,12 @@ class LispAST_Number(LispAST):
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
+
+    def equals(self, other):
+        return (self.radix == other.radix
+                and self.exactness == other.exactness
+                and self.real.equals(other.real)
+                and self.imag.equals(other.imag))
 
 class LispAST_token(LispAST):
     def __init__(self, tokenType, text, extra = []):
@@ -248,6 +260,14 @@ class LispAST_Conditional(LispAST):
         return "LispAST_Conditional(%s,%s,%s)" % ( self.test, self.consequent, self.alternate)
     def __str__(self):
         return "LispAST_Conditional(%s,%s,%s)" % ( self.test, self.consequent, self.alternate)
+
+    def eval(self, env):
+        testVal = self.test.eval(env).value
+        isFalse = testVal.valueType == LispValueTypes.Boolean and not testVal.value
+        if not isFalse:
+            return self.consequent.eval(env)
+        else:
+            return self.alternate.eval(env)
 
 class LispAST_Assignement(LispAST):
     def __init__(self, var, exp):
@@ -680,8 +700,8 @@ def lexNumberComplex(str, base, numAST):
 
     if LispLexerDebug : print("lexNumberComplex(%s, %s)" % (str, base))
 
-    real    = container(0)
-    imag    = container(0)
+    real    = container(LispAST_Real(1,0,1,"0.0"))
+    imag    = container(LispAST_Real(1,0,1,"0.0"))
     isPolar = container(False)
 
     result = (lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
@@ -1278,7 +1298,20 @@ def lispEval(ast):
                                  LispValueTypes.Primitive)
     primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
                                  LispValueTypes.Primitive)
+    primevalEnv['<'] = LispValue(LispAST_Primitive('<', lispPrimitive_smaller),
+                                 LispValueTypes.Primitive)
+    primevalEnv['<='] = LispValue(LispAST_Primitive('<=', lispPrimitive_smallerEqual),
+                                  LispValueTypes.Primitive)
+    primevalEnv['>'] = LispValue(LispAST_Primitive('>', lispPrimitive_greater),
+                                 LispValueTypes.Primitive)
+    primevalEnv['>='] = LispValue(LispAST_Primitive('>=', lispPrimitive_greaterEqual),
+                                  LispValueTypes.Primitive)
+    primevalEnv['='] = LispValue(LispAST_Primitive('=', lispPrimitive_equal),
+                                 LispValueTypes.Primitive)
     return ast.eval(primevalEnv).value
+
+def lispMakeBoolValue(val):
+    return LispValue(val, LispValueTypes.Boolean)
 
 def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
     sign = 1 if num >= 0 else -1
@@ -1333,6 +1366,51 @@ def lispPrimitive_subtract(*numbers):
                               numbers[1:],
                               numbers[0])
     return result
+
+def lispPrimitive_binary(fn, fnName, *numbers):
+    if len(numbers) != 2:
+        print("[LispEvalError] Invalid argment count for '%s'. Expecting 2, got %d" % (fnName, len(numbers)))
+        return LispEvalContext([], LispValueVoid())
+
+    if (numbers[0].valueType != LispValueTypes.Number
+        or numbers[1].valueType != LispValueTypes.Number):
+        print("[LispEvalError] Invalid argment types for '%s'. Expecting Number/Number, got %s/%s"
+              % (fnName, number[0].valueType, number[1].valueType))
+        return LispEvalContext([], LispValueVoid())
+
+    if ((not np.isclose(numbers[0].value.imag.numerator, 0.0))
+        or (not np.isclose(numbers[1].value.imag.numerator, 0.0))):
+        print("[LispEvalError] Expecting real arguments for '%s'" % fnName)
+        return LispEvalContext([], LispValueVoid())
+
+    retVal = fn(numbers[0].value.real.getFloat(), numbers[1].value.real.getFloat())
+    return LispValue(retVal, LispValueTypes.Boolean)
+
+def lispPrimitive_smaller(*numbers):
+    return lispPrimitive_binary(lambda x,y: x<y, "<", *numbers)
+
+def lispPrimitive_smallerEqual(*numbers):
+    return lispPrimitive_binary(lambda x,y: x<=y, "<=", *numbers)
+
+def lispPrimitive_greater(*numbers):
+    return lispPrimitive_binary(lambda x,y: x>y, ">", *numbers)
+
+def lispPrimitive_greaterEqual(*numbers):
+    return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
+
+def lispPrimitive_equal(*numbers):
+    if len(numbers) == 0:
+        return lispMakeBoolValue(True)
+    
+    if not all(n.valueType == LispValueTypes.Number for n in numbers):
+        print("[LispEvalError] Expecting only number arguments for '='")
+        return LispEvalContext([], LispValueVoid())
+
+    for i in range(1, len(numbers)):
+        if not numbers[i-1].value.equals(numbers[i].value):
+            return lispMakeBoolValue(False)
+    return lispMakeBoolValue(True)
+    
 
 ###############################################################################
 ## Unit tests
@@ -1793,6 +1871,36 @@ class TestLispLex(unittest.TestCase):
 
         valQuote3 = lispEval(parseExpression(parseTokens("'#(a b c)")).result[0])
         self.assertTrue(valQuote3.valueType == LispValueTypes.Vector)
+
+        valIf = lispEval(parseExpression(parseTokens("(if #f 'yes 'no)")).result[0])
+        self.assertTrue(valIf.value.text == "no")
+
+        valIf2 = lispEval(parseExpression(parseTokens("(if #t 'yes 'no)")).result[0])
+        self.assertTrue(valIf2.value.text == "yes")
+
+        valIf3 = lispEval(parseExpression(parseTokens("(if 'no 'yes 'no)")).result[0])
+        self.assertTrue(valIf3.value.text == "yes")
+
+        valIf4 = lispEval(parseExpression(parseTokens("(if ((lambda (x) #t) 3) 'yes 'no)")).result[0])
+        self.assertTrue(valIf4.value.text == "yes")
+
+        valCmp1 = lispEval(parseExpression(parseTokens("(if (< 1 2) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp1.value.text == "yes")
+
+        valCmp2 = lispEval(parseExpression(parseTokens("(if (<= 2.22 2.22) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp2.value.text == "yes")
+
+        valCmp3 = lispEval(parseExpression(parseTokens("(if (>= #xFF #xFF) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp3.value.text == "yes")
+
+        valCmp4 = lispEval(parseExpression(parseTokens("(if (> #xFF #o77777) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp4.value.text == "no")
+
+        valCmp5 = lispEval(parseExpression(parseTokens("(if (= #xF 15 #b1111) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp5.value.text == "yes")
+
+        valCmp6 = lispEval(parseExpression(parseTokens("(if (= #xFF 12) 'yes 'no)")).result[0])
+        self.assertTrue(valCmp6.value.text == "no")
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
