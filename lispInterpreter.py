@@ -1338,8 +1338,8 @@ class LispValue:
     def __str__(self):
         return "LispValue(%s,%s)" % ( self.value, self.valueType)
 
-# def LispValueFalse():
-#     return LispValue(LispAST_token(LispTokenTypes.Boolean, "#f", False), LispValueTypes.Boolean)
+def LispValueBool(b):
+    return LispValue(LispAST_token(LispTokenTypes.Boolean, "#t" if b else "#f", b), LispValueTypes.Boolean)
 
 def LispValueVoid():
     return LispValue(False, LispValueTypes.Void)
@@ -1367,8 +1367,16 @@ def lispEval(ast):
                                  LispValueTypes.Primitive)
     primevalEnv['>='] = LispValue(LispAST_Primitive('>=', lispPrimitive_greaterEqual),
                                   LispValueTypes.Primitive)
-    primevalEnv['='] = LispValue(LispAST_Primitive('=', lispPrimitive_equal),
+    primevalEnv['='] = LispValue(LispAST_Primitive('=', lispPrimitive_equalNum),
                                  LispValueTypes.Primitive)
+    primevalEnv['char=?'] = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
+                                      LispValueTypes.Primitive)
+    primevalEnv['string=?'] = LispValue(LispAST_Primitive('string=?', lispPrimitive_equalStr),
+                                        LispValueTypes.Primitive)
+    primevalEnv['null?'] = LispValue(LispAST_Primitive('null?', lispPrimitive_null),
+                                     LispValueTypes.Primitive)
+    primevalEnv['eqv?'] = LispValue(LispAST_Primitive('eqv?', lispPrimitive_eqv),
+                                    LispValueTypes.Primitive)
     return ast.eval(primevalEnv).value
 
 def lispMakeBoolValue(val):
@@ -1459,7 +1467,7 @@ def lispPrimitive_greater(*numbers):
 def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
 
-def lispPrimitive_equal(*numbers):
+def lispPrimitive_equalNum(*numbers):
     if len(numbers) == 0:
         return lispMakeBoolValue(True)
     
@@ -1471,7 +1479,65 @@ def lispPrimitive_equal(*numbers):
         if not numbers[i-1].value.equals(numbers[i].value):
             return lispMakeBoolValue(False)
     return lispMakeBoolValue(True)
+
+def lispPrimitive_equalChr(*args):
+    if not all(c.valueType == LispValueTypes.Char for c in args):
+        print("[LispEvalError] expecting only character arguments for 'char=?'...")
+        return LispEvalContext([], LispValueVoid())
+    for i in range(len(args)-1):
+        if args[i].value != args[i+1].value:
+            return LispValueBool(False)
+    return LispValueBool(True)
+        
+def lispPrimitive_equalStr(*args, strType = LispValueTypes.String, getI = lambda s,i: s.value[i]):
+    if not all(c.valueType == strType for c in args):
+        print("[LispEvalError] expecting only character arguments for 'string=?'...")
+        return LispEvalContext([], LispValueVoid())
+
+    if len(args) == 0:
+        return LispValueBool(True)
     
+    l0 = len(args[0].value)
+    if not all(len(args[i].value) == l0 for i in range(1,len(args))):
+        return LispValueBool(False)
+
+    for i in range(l0):
+        c0 = getI(args[0], i)
+        if not all(getI(args[s], i) == c0 for s in range(1, len(args))):
+            return LispValueBool(False)
+    return LispValueBool(True)
+
+def lispPrimitive_null(*args):
+    if len(args) != 1:
+        print("[LispEvalError] 'null?' expects 1 argument, received %d." % len(args))
+        return LispEvalContext([], LispValueVoid())
+    return LispValueBool(args[0].valueType == LispValueTypes.Pair
+                         and args[0].value.head == []
+                         and args[0].value.tail == False)
+
+def lispPrimitive_eqv(*args):
+    if len(args) != 2:
+        print("[LispEvalError] eqv expects 2 arguments, received %d." % len(args))
+        return LispEvalContext([], LispValueVoid())
+
+    if args[0].valueType != args[1].valueType:
+        return LispValueBool(False)
+    elif args[0].valueType == LispValueTypes.Boolean:
+        return args[0].value == args[1].value
+    elif args[0].valueType == LispValueTypes.Char:
+        return lispPrimitive_equalChr(*args)
+    elif args[0].valueType == LispValueTypes.Number:
+        return lispPrimitive_equalNum(*args)
+    elif args[0].valueType == LispValueTypes.String:
+        return lispPrimitive_equalStr(*args)
+    elif args[0].valueType == LispValueTypes.Symbol:
+        return lispPrimitive_equalStr(*args, LispValueTypes.Symbol, lambda s,i: s.value.text[i])
+    elif args[0].valueType == LispValueTypes.Pair:
+        if (lispPrimitive_null(args[0]).value
+            and lispPrimitive_null(args[1]).value):
+            return LispValueBool(True)
+
+    return args[0].value == args[1].value
 
 ###############################################################################
 ## Unit tests
