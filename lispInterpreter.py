@@ -1375,39 +1375,55 @@ class LispEvalContext:
     def __str__(self):
         return "LispEvalContext(%s,%s)" % ( self.env, self.value)
 
+def lispMakePrimitiveNoCount(id, pyFun):
+    return LispValue(LispAST_Primitive(id, pyFun), LispValueTypes.Primitive)
+    
+def lispMakePrimitiveWithCount(id, pyFun, count):
+    def pyFunWithChecks(*args):
+        if len(args) != count:
+            print("[LispEvalError] Invalid argment count for '%s'. Expecting %d, got %d" % (id, count, len(args)))
+            return LispEvalContext([], LispValueVoid())
+        else:
+            return pyFun(*args)
+                
+    return LispValue(LispAST_Primitive(id, pyFunWithChecks), LispValueTypes.Primitive)
+
 def lispEval(ast):
     primevalEnv = dict()
     primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
                                  LispValueTypes.Primitive)
     primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
                                  LispValueTypes.Primitive)
-    primevalEnv['<'] = LispValue(LispAST_Primitive('<', lispPrimitive_smaller),
-                                 LispValueTypes.Primitive)
-    primevalEnv['<='] = LispValue(LispAST_Primitive('<=', lispPrimitive_smallerEqual),
-                                  LispValueTypes.Primitive)
-    primevalEnv['>'] = LispValue(LispAST_Primitive('>', lispPrimitive_greater),
-                                 LispValueTypes.Primitive)
-    primevalEnv['>='] = LispValue(LispAST_Primitive('>=', lispPrimitive_greaterEqual),
-                                  LispValueTypes.Primitive)
-    primevalEnv['='] = LispValue(LispAST_Primitive('=', lispPrimitive_equalNum),
-                                 LispValueTypes.Primitive)
+
+    primevalEnv['<']    = lispMakePrimitiveWithCount('<', lispPrimitive_smaller, 2)
+    primevalEnv['<=']   = lispMakePrimitiveWithCount('<=', lispPrimitive_smallerEqual, 2)
+    primevalEnv['>']    = lispMakePrimitiveWithCount('>', lispPrimitive_greater, 2)
+    primevalEnv['>=']   = lispMakePrimitiveWithCount('>=', lispPrimitive_greaterEqual, 2)
+    primevalEnv['=']    = lispMakePrimitiveNoCount('=', lispPrimitive_equalNum)
+
     primevalEnv['char=?'] = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
                                       LispValueTypes.Primitive)
     primevalEnv['string=?'] = LispValue(LispAST_Primitive('string=?',
                                                           lambda *args: lispPrimitive_equalStr(LispValueTypes.String,
                                                                                                lambda s: s.value, *args)),
                                         LispValueTypes.Primitive)
-    primevalEnv['null?'] = LispValue(LispAST_Primitive('null?', lispPrimitive_null),
-                                     LispValueTypes.Primitive)
-    primevalEnv['eqv?'] = LispValue(LispAST_Primitive('eqv?', lispPrimitive_eqv),
-                                    LispValueTypes.Primitive)
-
+    primevalEnv['null?']    = lispMakePrimitiveWithCount('null?', lispPrimitive_null, 1)
+    primevalEnv['eqv?']     = lispMakePrimitiveWithCount('eqv?', lispPrimitive_eqv, 2)
     # lazy eq? implementation...
-    primevalEnv['eq?'] = LispValue(LispAST_Primitive('eq?', lispPrimitive_eqv),
-                                   LispValueTypes.Primitive)
+    primevalEnv['eq?']      = lispMakePrimitiveWithCount('eq?', lispPrimitive_eqv, 2)
+    primevalEnv['equal?']   = lispMakePrimitiveWithCount('equal?', lispPrimitive_equal, 2)
 
-    primevalEnv['equal?'] = LispValue(LispAST_Primitive('equal?', lispPrimitive_equal),
-                                      LispValueTypes.Primitive)
+    primevalEnv['number?']      = lispMakePrimitiveWithCount('number?',     lispPrimitive_isNumber, 1)
+    primevalEnv['pair?']        = lispMakePrimitiveWithCount('pair?',       lispPrimitive_isPair, 1)
+    primevalEnv['char?']        = lispMakePrimitiveWithCount('char?',       lispPrimitive_isChar, 1)
+    primevalEnv['string?']      = lispMakePrimitiveWithCount('string?',     lispPrimitive_isString, 1)
+    primevalEnv['boolean?']     = lispMakePrimitiveWithCount('boolean?',    lispPrimitive_isBoolean, 1)
+    primevalEnv['symbol?']      = lispMakePrimitiveWithCount('symbol?',     lispPrimitive_isSymbol, 1)
+    primevalEnv['vector?']      = lispMakePrimitiveWithCount('vector?',     lispPrimitive_isVector, 1)
+    primevalEnv['procedure?']   = lispMakePrimitiveWithCount('procedure?',  lispPrimitive_isProcedure, 1)
+    primevalEnv['port?']        = lispMakePrimitiveWithCount('port?',       lispPrimitive_isPort, 1)
+
+
     return ast.eval(primevalEnv).value
 
 def lispMakeBoolValue(val):
@@ -1423,6 +1439,41 @@ def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
                                     LispAST_Real(1, imagNum, imagDenom, imagStr),
                                     numStr),
                      LispValueTypes.Number)
+
+
+##-----------------------------------------------------------------------------
+## base type predicate procedures
+
+def lispPrimitive_isNumber(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Number)
+
+def lispPrimitive_isPair(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Pair)
+
+def lispPrimitive_isChar(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Char)
+
+def lispPrimitive_isString(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.String)
+
+def lispPrimitive_isBoolean(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Boolean)
+
+def lispPrimitive_isSymbol(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Symbol)
+
+def lispPrimitive_isVector(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Vector)
+
+def lispPrimitive_isProcedure(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Procedure
+                             or numbers[0].valueType == LispValueTypes.Primitive)
+
+def lispPrimitive_isPort(*numbers):
+    return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Port)
+
+##-----------------------------------------------------------------------------
+## number procedures
 
 def lispApplyNumberFun(x, y, f):
     if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
@@ -1468,10 +1519,6 @@ def lispPrimitive_subtract(*numbers):
     return result
 
 def lispPrimitive_binary(fn, fnName, *numbers):
-    if len(numbers) != 2:
-        print("[LispEvalError] Invalid argment count for '%s'. Expecting 2, got %d" % (fnName, len(numbers)))
-        return LispEvalContext([], LispValueVoid())
-
     if (numbers[0].valueType != LispValueTypes.Number
         or numbers[1].valueType != LispValueTypes.Number):
         print("[LispEvalError] Invalid argment types for '%s'. Expecting Number/Number, got %s/%s"
@@ -1497,6 +1544,9 @@ def lispPrimitive_greater(*numbers):
 
 def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
+
+##-----------------------------------------------------------------------------
+## equality procedures
 
 def lispPrimitive_equalNum(*numbers):
     if len(numbers) == 0:
@@ -1539,19 +1589,11 @@ def lispPrimitive_equalStr(strType = LispValueTypes.String, getStr = lambda s: s
     return LispValueBool(True)
 
 def lispPrimitive_null(*args):
-    if len(args) != 1:
-        print("[LispEvalError] 'null?' expects 1 argument, received %d." % len(args))
-        return LispEvalContext([], LispValueVoid())
-
     return LispValueBool(args[0].valueType == LispValueTypes.Pair
                          and args[0].value.head == []
                          and args[0].value.tail == False)
 
 def lispPrimitive_eqv(*args):
-    if len(args) != 2:
-        print("[LispEvalError] eqv expects 2 arguments, received %d." % len(args))
-        return LispEvalContext([], LispValueVoid())
-
     if args[0].valueType != args[1].valueType:
         return LispValueBool(False)
     elif args[0].valueType == LispValueTypes.Boolean:
@@ -1572,38 +1614,63 @@ def lispPrimitive_eqv(*args):
     return args[0].value == args[1].value
 
 def lispPrimitive_equal(*args):
-    if len(args) != 2:
-        print("[LispEvalError] eqv expects 2 arguments, received %d." % len(args))
-        return LispEvalContext([], LispValueVoid())
+    def equal_rec(x, y):
+        # print("test: %s, %s" % (x,y))
+        if type(x) != type(y):
+            return LispValueBool(False)
 
-    #todo, need to define recursive non-value analyser of lists and vector... -_-'
-    return False
-
-    # def equal_rec(x, y):
-    #     if type(x) != type(y):
-    #         return LispValueBool(False)
+        if isinstance(x, LispAST_Quotation):
+            return equal_rec(x.datum, y.datum)
         
-    #     if isinstance(x, LispAST_List):
-    #         if len(x.head) != len(y.head):
-    #             return LispValueBool(False)
-    #         for i in range(len(x.head)):
-    #             if not equal_rec(x.head[i], y.head[i]):
-    #                 return LispValueBool(False)
-    #         if x.tail != y.tail or not equal_rec(x.tail, y.tail):
-    #             return LispValueBool(False)
-    #         else:
-    #             return LispValueBool(True)
-    #     elif isinstance(x, LispAST_Vector):
-    #         if len(x.content) != len(y.content):
-    #             return LispValueBool(False)
-    #         for i in range(len(x.content)):
-    #             if not equal_rec_equal(x.content[i], y.content[i]):
-    #                 return LispValueBool(False)
-    #         return LispValueBool(True)
-    #     else:
-    #         return equal_rec(x, y)
+        if isinstance(x, LispAST_List):
+            if len(x.head) != len(y.head):
+                return LispValueBool(False)
+            for i in range(len(x.head)):
+                if not equal_rec(x.head[i], y.head[i]):
+                    return LispValueBool(False)
+            if x.tail != y.tail or (x.tail and not equal_rec(x.tail, y.tail)):
+                return LispValueBool(False)
+            else:
+                return LispValueBool(True)
+        elif isinstance(x, LispAST_Vector):
+            if len(x.content) != len(y.content):
+                return LispValueBool(False)
+            for i in range(len(x.content)):
+                if not equal_rec(x.content[i], y.content[i]):
+                    return LispValueBool(False)
+            return LispValueBool(True)
+        elif isinstance(x, LispAST_Abbreviation):
+            return equal_rec(x.datum, y.datum)
+        elif isinstance(x, LispAST_Symbol):
+            return lispPrimitive_equalStr(LispValueTypes.Symbol,
+                                          lambda s: s.value.text,
+                                          LispValue(x, LispValueTypes.Symbol),
+                                          LispValue(y, LispValueTypes.Symbol))
+        elif isinstance(x, LispAST_token):
+            if x.tokenType == LispTokenTypes.Number:
+                return lispPrimitive_equalNum(LispValue(x.extra, LispValueTypes.Number),
+                                                  LispValue(y.extra, LispValueTypes.Number))
+            elif x.tokenType == LispTokenTypes.Character:
+                return lispPrimitive_equalChr(LispValue(x.extra, LispValueTypes.Char),
+                                                  LispValue(y.extra, LispValueTypes.Char))
+            elif x.tokenType == LispTokenTypes.String:
+                return lispPrimitive_equalStr(LispValueTypes.String,
+                                                  lambda s: s.value,
+                                                  LispValue(x.extra, LispValueTypes.String),
+                                                  LispValue(y.extra, LispValueTypes.String))
+            elif x.tokenType == LispTokenTypes.Boolean:
+                return x.extra == y.extra
 
-    # return equal_rec(args[0].value, args[1].value)
+            else:
+                raise Exception("Unexpected token... of type : %s" % str(list(map(lambda x: type(x).__name__, args))))
+        else:
+            raise Exception("Unexpected datum... of type: %s" % str(list(map(lambda x: type(x).__name__, args))))
+
+    return equal_rec(args[0].value, args[1].value)
+
+##-----------------------------------------------------------------------------
+## bool procedures
+
 
 ###############################################################################
 ## Unit tests
@@ -2118,6 +2185,15 @@ class TestLispLex(unittest.TestCase):
 
         valEqual1 = lispEval(parseExpression(parseTokens("(equal? '(a b cc 1.2+i #(3 #\\d)) '(a b cc 1.2+i #(3 #\\d)))")).result[0])
         self.assertTrue(valEqual1.value)
+
+        valEqual2 = lispEval(parseExpression(parseTokens("(equal? '(`(#f #t . 123) c . #()) '(`(#f #t . 123) c . #()))")).result[0])
+        self.assertTrue(valEqual2.value)
+
+        valPred1 = lispEval(parseExpression(parseTokens("(number? 123.01+i)")).result[0])
+        self.assertTrue(valPred1.value)
+
+        valPred2 = lispEval(parseExpression(parseTokens("(number? 'hello)")).result[0])
+        self.assertFalse(valPred2.value)
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
