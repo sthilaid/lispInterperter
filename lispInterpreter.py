@@ -2174,6 +2174,7 @@ class TestLispLex(unittest.TestCase):
         valCond4 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((+ 2 2) => (lambda (x) (+ x 2))) (else 'a 'b 'cee))")).result[0])
         self.assertTrue(self.isEqual(valCond4.value, 6, 0))
 
+    def testPrimitivesEquality(self):
         valEqv1 = lispEval(parseExpression(parseTokens("((lambda (x) (if (eqv? 'allo x) 'yes 'no)) 'allo)")).result[0])
         self.assertTrue(valEqv1.value.text == "yes")
 
@@ -2189,11 +2190,48 @@ class TestLispLex(unittest.TestCase):
         valEqual2 = lispEval(parseExpression(parseTokens("(equal? '(`(#f #t . 123) c . #()) '(`(#f #t . 123) c . #()))")).result[0])
         self.assertTrue(valEqual2.value)
 
+    def testPrimitivesPredicates(self):
         valPred1 = lispEval(parseExpression(parseTokens("(number? 123.01+i)")).result[0])
         self.assertTrue(valPred1.value)
 
         valPred2 = lispEval(parseExpression(parseTokens("(number? 'hello)")).result[0])
         self.assertFalse(valPred2.value)
+
+        valPred3 = lispEval(parseExpression(parseTokens("(char? #\\a)")).result[0])
+        self.assertTrue(valPred3.value)
+
+        valPred4 = lispEval(parseExpression(parseTokens("(char? \"a\")")).result[0])
+        self.assertFalse(valPred4.value)
+
+        valPred5 = lispEval(parseExpression(parseTokens("(boolean? #f)")).result[0])
+        self.assertTrue(valPred5.value)
+
+        valPred6 = lispEval(parseExpression(parseTokens("(boolean? 'false)")).result[0])
+        self.assertFalse(valPred6.value)
+
+        valPred7 = lispEval(parseExpression(parseTokens("(string? \"yes\")")).result[0])
+        self.assertTrue(valPred7.value)
+
+        valPred7 = lispEval(parseExpression(parseTokens("(string? 'false)")).result[0])
+        self.assertFalse(valPred6.value)
+
+        valPred8 = lispEval(parseExpression(parseTokens("(pair? '(a b c))")).result[0])
+        self.assertTrue(valPred8.value)
+
+        valPred9 = lispEval(parseExpression(parseTokens("(pair? 'false)")).result[0])
+        self.assertFalse(valPred9.value)
+
+        valPred10 = lispEval(parseExpression(parseTokens("(vector? '#(a b c))")).result[0])
+        self.assertTrue(valPred10.value)
+
+        valPred11 = lispEval(parseExpression(parseTokens("(vector? '(a b c))")).result[0])
+        self.assertFalse(valPred11.value)
+
+        valPred12 = lispEval(parseExpression(parseTokens("(procedure? +)")).result[0])
+        self.assertTrue(valPred12.value)
+
+        valPred13 = lispEval(parseExpression(parseTokens("(procedure? '+)")).result[0])
+        self.assertFalse(valPred13.value)
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
