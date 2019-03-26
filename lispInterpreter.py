@@ -326,6 +326,13 @@ class LispAST_Begin:
     def __str__(self):
         return "LispAST_Begin(%s)" % ( self.body)
 
+    def eval(self, env):
+        newEnv = env.copy()
+        val = LispValueVoid()
+        for i in range(len(self.body)):
+            res = self.body[i].eval(newEnv)
+            newEnv, val = res.env, res.value
+        return LispEvalContext(newEnv, val)
 
 class LispAST_CondClause:
     def __init__(self, test, body, isAlternateForm):
@@ -375,6 +382,71 @@ class LispAST_Cond:
             return val
         else:
             return LispEvalContext(env, LispValueVoid())
+
+
+class LispAST_Binding:
+    def __init__(self, var, expr):
+        self.var = var
+        self.expr = expr
+    def __repr__(self):
+        return "LispAST_Binding(%s,%s)" % ( self.var, self.expr)
+    def __str__(self):
+        return "LispAST_Binding(%s,%s)" % ( self.var, self.expr)
+
+class LispAST_Let:
+    def __init__(self, bindings, body, isSeq=False, isRec=False):
+        self.bindings = bindings
+        self.body = body
+        self.isSeq = isSeq
+        self.isRec = isRec
+    def __repr__(self):
+        return "LispAST_Let(%s,%s,%s,%s)" % ( self.bindings, self.body, self.isSeq, self.isRec)
+    def __str__(self):
+        return "LispAST_Let(%s,%s,%s,%s)" % ( self.bindings, self.body, self.isSeq, self.isRec)
+
+    def eval(self, env):
+        newEnv = env.copy()
+        
+        if self.isRec:
+            for i in range(len(self.bindings)):
+                var = self.bindings[i].var.id
+                newEnv[var] = False
+            for i in range(len(self.bindings)):
+                var = self.bindings[i].var.id
+                val = self.bindings[i].expr.eval(newEnv).value
+                newEnv[var] = val
+        else:
+            for i in range(len(self.bindings)):
+                if self.isSeq:
+                    var = self.bindings[i].var.id
+                    val = self.bindings[i].expr.eval(newEnv).value
+                    newEnv[var] = val
+                else: # normal let case
+                    var = self.bindings[i].var.id
+                    val = self.bindings[i].expr.eval(env).value
+                    newEnv[var] = val
+
+        return self.body.eval(newEnv)
+
+class LispAST_andOr:
+    def __init__(self, tests, isAnd):
+        self.tests = tests
+        self.isAnd = isAnd
+    def __repr__(self):
+        return "LispAST_andOr(%s,%s)" % ( self.tests, self.isAnd)
+    def __str__(self):
+        return "LispAST_andOr(%s,%s)" % ( self.tests, self.isAnd)
+
+    def eval(self, env):
+        for i in range(len(self.tests)):
+            testVal = self.tests[i].eval(env).value
+            isFalse = lispIsFalse(testVal)
+            if (self.isAnd and isFalse):
+                return LispEvalContext(env, lispMakeBoolValue(False))
+            elif (not self.isAnd) and (not isFalse):
+                return LispEvalContext(env, testVal)
+        return LispEvalContext(env, lispMakeBoolValue(True if self.isAnd else False))
+
 
 ###############################################################################
 ## Lexing
@@ -1185,13 +1257,14 @@ def parseCondClause(tokens):
                                       parseExpression],
                          lambda t,e: LispAST_CondClause(t, e, True)))
 
+def parseBindingSpec(tokens):
+    return parseSExp(tokens, "", [parseVariable, parseExpression], LispAST_Binding)
+
+
 # def parseCaseClause(tokens):
 #     return parseSExp(tokens, [lambda x: parseSExp(x, [lambda y: parseMultiple(y, 0, parseDatum)]),
 
 #                               parseSequence])
-
-# def parseBindingSpec(tokens):
-#     return parseSExp(tokens, [parseVariable, parseExpression])
 
 # def parseIterationSpec(tokens):
 #     return (parseSExp(tokens, [parseVariable, parseExpression, parseExpression])
@@ -1211,29 +1284,38 @@ def parseDerivedExpression(tokens):
             or parseSExp(tokens, "cond", [lambda x: parseMultiple(x, 1, parseCondClause)],
                          lambda cs: LispAST_Cond(cs, False))
 
+            or parseSExp(tokens, "let", [lambda x: parseSExp(x, "", [lambda y: parseMultiple(y, 0, parseBindingSpec)],
+                                                             lambda bindings: bindings),
+                                         parseBody],
+                         lambda bindings,body: LispAST_Let(bindings, body, False, False))
+
+            or parseSExp(tokens, "let*", [lambda x: parseSExp(x, "", [lambda y: parseMultiple(y, 0, parseBindingSpec)],
+                                                              lambda bindings: bindings),
+                                          parseBody],
+                         lambda bindings,body: LispAST_Let(bindings, body, True, False))
+
+            or parseSExp(tokens, "letrec", [lambda x: parseSExp(x, "", [lambda y: parseMultiple(y, 0, parseBindingSpec)],
+                                                                lambda bindings: bindings),
+                                            parseBody],
+                         lambda bindings,body: LispAST_Let(bindings, body, False, True))
+
+            or parseSExp(tokens, "and", [lambda x: parseMultiple(x, 0, parseTest)],
+                         lambda tests: LispAST_andOr(tests, True))
+
+            or parseSExp(tokens, "or", [lambda x: parseMultiple(x, 0, parseTest)],
+                         lambda tests: LispAST_andOr(tests, False))
+
+            or parseSExp(tokens, "begin", [parseSequence], LispAST_Begin)
+
             # or parseSExp(tokens, "case",  [parseExpression,
             #                                lambda x: parseMultiple(x, 0, parseCaseClause),
             #                                lambda x: parseSExp(x, "else", [parseSequence])])
             or False)
-#     return (parseSExpWithId(tokens, "cond",     [lambda x: lexMultiple(x, 0, parseCondClause, init=[]),
-#                                                  lambda x: parseSExpWithId(x, "else", [parseSequence])])
-#             or parseSExpWithId(tokens, "cond",  [lambda x: lexMultiple(x, 1, parseCondClause, init=[])])
 #             or parseSExpWithId(tokens, "case",  [parseExpression,
 #                                                  lambda x: lexMultiple(x, 0, parseCaseClause, init=[]),
 #                                                  lambda x: parseSExpWithId(x, "else", [parseSequence])])
 #             or parseSExpWithId(tokens, "case",  [parseExpression, lambda x: lexMultiple(x, 1, parseCaseClause, init=[])])
-#             or parseSExpWithId(tokens, "and",   [lambda x: lexMultiple(x, 0, parseTest, init=[])])
-#             or parseSExpWithId(tokens, "or",    [lambda x: lexMultiple(x, 0, parseTest, init=[])])
-#             or parseSExpWithId(tokens, "let",   [lambda x: parseSExp(x, [lambda y: lexMultiple(y, 0, parseBindingSpec, init=[])]),
-#                                                  parseBody])
-#             or parseSExpWithId(tokens, "let",   [parseVariable,
-#                                                  lambda x: parseSExp(x, [lambda y: lexMultiple(y, 0, parseBindingSpec, init=[])]),
-#                                                  parseBody])
-#             or parseSExpWithId(tokens, "let*",  [lambda x: parseSExp(x, [lambda y: lexMultiple(y, 0, parseBindingSpec, init=[])]),
-#                                                  parseBody])
-#             or parseSExpWithId(tokens, "letrec",[lambda x: parseSExp(x, [lambda y: lexMultiple(y, 0, parseBindingSpec, init=[])]),
-#                                                  parseBody])
-#             or parseSExpWithId(tokens, "begin", [parseSequence])
+
 #             or parseSExpWithId(tokens, "do",    [lambda x: parseSExp(x, [lambda y: lexMultiple(y, 0, parseIterationSpec, init=[])]),
 #                                                  lambda x: parseSExp(x, [parseTest, parseDoResult]),
 #                                                  lambda x: lexMultiple(x, 0, parseExpression, init=[])])
@@ -1265,11 +1347,11 @@ def parseExpression(tokens):
     if LispLexerDebug : print("parseExpression(%s)" % tokens)
     return (parseVariable(tokens)
             or parseLitteral(tokens)
+            or parseDerivedExpression(tokens)
             or parseProcedureCall(tokens)
             or parseLambdaExpression(tokens)
             or parseConditional(tokens)
             or parseAssignement(tokens)
-            or parseDerivedExpression(tokens)
             or parseMacroUse(tokens)
             or parseMacroBlock(tokens))
 
@@ -1392,6 +1474,8 @@ def lispEval(ast):
     primevalEnv = dict()
     primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
                                  LispValueTypes.Primitive)
+    primevalEnv['*'] = LispValue(LispAST_Primitive('*', lispPrimitive_multiply),
+                                 LispValueTypes.Primitive)
     primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
                                  LispValueTypes.Primitive)
 
@@ -1495,6 +1579,18 @@ def lispPrimitive_add(*numbers):
     result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, add),
                               numbers,
                               lispMakeNumberValue(0))
+    return result
+
+def lispPrimitive_multiply(*numbers):
+    def mul(x, y):
+        lcd = np.lcm(x.denominator, y.denominator)
+        numX = x.numerator * lcd / x.denominator
+        numY = y.numerator * lcd / y.denominator
+        return (x.numerator * y.numerator, x.denominator * y.denominator)
+
+    result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, mul),
+                              numbers,
+                              lispMakeNumberValue(1))
     return result
 
 def lispPrimitive_subtract(*numbers):
@@ -2232,6 +2328,33 @@ class TestLispLex(unittest.TestCase):
 
         valPred13 = lispEval(parseExpression(parseTokens("(procedure? '+)")).result[0])
         self.assertFalse(valPred13.value)
+
+    def testLet(self):
+        valLet1 = lispEval(parseExpression(parseTokens("(let ((x 1)) (= x 1))")).result[0])
+        self.assertTrue(valLet1.value)
+
+        valLet2 = lispEval(parseExpression(parseTokens("(let ((x 1) (y 2) (z 3)) (+ x y z))")).result[0])
+        self.assertTrue(self.isEqual(valLet2.value, 6, 0))
+
+        valLet3 = lispEval(parseExpression(parseTokens("(let* ((x 1) (y (+ x 1))) (+ x y))")).result[0])
+        self.assertTrue(self.isEqual(valLet3.value, 3, 0))
+
+        valLet4 = lispEval(parseExpression(parseTokens("(letrec ((fact (lambda (n) (if (<= n 1) 1 (* n (fact (- n 1))))))) (fact 4))")).result[0])
+        self.assertTrue(self.isEqual(valLet4.value, 24, 0))
+
+    def testAndOr(self):
+        val1 = lispEval(parseExpression(parseTokens("(and #t 1.0 (< 1 2))")).result[0])
+        self.assertTrue(val1)
+
+        val2 = lispEval(parseExpression(parseTokens("(or #f (> 1 2) (+ 0 0))")).result[0])
+        self.assertTrue(self.isEqual(val2.value, 0, 0))
+
+    def testBegin(self):
+        val1 = lispEval(parseExpression(parseTokens("(begin 1)")).result[0])
+        self.assertTrue(self.isEqual(val1.value, 1, 0))
+
+        val2 = lispEval(parseExpression(parseTokens("(begin 'a (+ 1 2) #t)")).result[0])
+        self.assertTrue(val2.valueType)
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
