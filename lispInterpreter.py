@@ -1518,7 +1518,8 @@ def lispEval(ast):
     primevalEnv['vector?']      = lispMakePrimitiveWithCount('vector?',     lispPrimitive_isVector, 1)
     primevalEnv['procedure?']   = lispMakePrimitiveWithCount('procedure?',  lispPrimitive_isProcedure, 1)
     primevalEnv['port?']        = lispMakePrimitiveWithCount('port?',       lispPrimitive_isPort, 1)
-
+    primevalEnv['exact?']        = lispMakePrimitiveWithCount('exact?',     lispPrimitive_isExact, 1)
+    primevalEnv['inexact?']        = lispMakePrimitiveWithCount('inexact?', lispPrimitive_isInexact, 1)
 
     return ast.eval(primevalEnv).value
 
@@ -1593,6 +1594,12 @@ def lispPrimitive_isInteger(*numbers):
                  and numbers[0].value.exactness
                  and np.isclose(numbers[0].value.real.denominator, 1.0))
     return lispMakeBoolValue(isInteger)
+
+def lispPrimitive_isExact(*numbers):
+    return lispMakeBoolValue(numbers[0].value.exactness)
+
+def lispPrimitive_isInexact(*numbers):
+    return lispMakeBoolValue(not numbers[0].value.exactness)
 
 def lispApplyNumberFun(x, y, f):
     if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
@@ -1675,6 +1682,10 @@ def lispPrimitive_greater(*numbers):
 
 def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
+
+def lispPrimitive_isZero(*numbers):
+    return (np.isclose(numbers[0].value.real.numerator, 0)
+            and np.isclose(numbers[0].value.real.denominator, 0))
 
 ##-----------------------------------------------------------------------------
 ## equality procedures
@@ -2430,6 +2441,18 @@ class TestLispLex(unittest.TestCase):
 
         val13 = lispEval(parseExpression(parseTokens("(integer? 12/34)")).result[0])
         self.assertFalse(val13.value)
+
+        val14 = lispEval(parseExpression(parseTokens("(exact? 12/34)")).result[0])
+        self.assertTrue(val14.value)
+
+        val15 = lispEval(parseExpression(parseTokens("(exact? 1e10)")).result[0])
+        self.assertFalse(val15.value)
+
+        val16 = lispEval(parseExpression(parseTokens("(inexact? 1.3e-5)")).result[0])
+        self.assertTrue(val16.value)
+
+        val17 = lispEval(parseExpression(parseTokens("(inexact? #b1010)")).result[0])
+        self.assertFalse(val17.value)
 
 
 def runLispTests():
