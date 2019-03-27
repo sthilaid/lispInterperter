@@ -762,12 +762,12 @@ def lexNumberPrefix(str, base, numAST):
             or (base == 10) and (lexExactness(str, numAST)
                                  or lexEmpty(str)))
 
-def lexNumberSuffix(str):
+def lexNumberSuffix(str, allowsEmpty=True):
     if LispLexerDebug : print("lexNumberSuffix(%s)" % (str))
     return (lexCompose(str, [lexExponentMarker,
                              lexSign,
                              lambda x: lexMultiple(x, 1, lexDigit)])
-            or lexEmpty(str))
+            or (allowsEmpty and lexEmpty(str)))
 
 def lexDecimal(str):
     if LispLexerDebug : print("lexDecimal(%s)" % (str))
@@ -786,7 +786,7 @@ def lexDecimal(str):
                                   lambda x: lexMultiple(x, 0, lambda y: lexSpecificCharacter(y, "#")),
                                   lexNumberSuffix])
               or lexCompose(str, [lambda x: lexUInteger(x, 10),
-                                  lexNumberSuffix]))
+                                  lambda x: lexNumberSuffix(x, False)]))
     if result:
         result.extra = result.result
         return result
@@ -811,10 +811,10 @@ def lexURealNumber(str, base):
     numerator   = container()
     denominator = container(1)
     
-    result = ((base == 10 and assignContainer(lexDecimal(str), numerator, toFloat))
-              or lexCompose(str, [lambda x: assignContainer(lexUInteger(x, base), numerator, toInt),
-                                  lambda x: lexSpecificCharacter(x, "/"),
-                                  lambda x: assignContainer(lexUInteger(x, base), denominator, toInt)])
+    result = (lexCompose(str, [lambda x: assignContainer(lexUInteger(x, base), numerator, toInt),
+                               lambda x: lexSpecificCharacter(x, "/"),
+                               lambda x: assignContainer(lexUInteger(x, base), denominator, toInt)])
+              or (base == 10 and assignContainer(lexDecimal(str), numerator, toFloat))
               or assignContainer(lexUInteger(str, base), numerator, toInt))
 
     if result:
@@ -906,8 +906,9 @@ def lexNumber(str):
                    and isinstance(numAST.real.denominator, int)
                    and isinstance(numAST.imag.numerator, int)
                    and isinstance(numAST.imag.denominator, int))
-        if numAST.exactness and not isExact:
-            numAST.exact = isExact # todo: transform into exact instead of downcasting
+        # print("test: %s %s" % (numAST.real.__repr__(), numAST.imag.__repr__()))
+        if numAST.exactness and (not isExact):
+            numAST.exactness = isExact # todo: transform into exact instead of downcasting
         result.extra = numAST
         return result
     else:
@@ -1590,7 +1591,7 @@ def lispPrimitive_isInteger(*numbers):
     isInteger = (numbers[0].valueType == LispValueTypes.Number
                  and np.isclose(numbers[0].value.imag.numerator, 0.0)
                  and numbers[0].value.exactness
-                 and np.isclose(numbers[0].value.denominator, 1.0))
+                 and np.isclose(numbers[0].value.real.denominator, 1.0))
     return lispMakeBoolValue(isInteger)
 
 def lispApplyNumberFun(x, y, f):
@@ -1997,7 +1998,7 @@ class TestLispLex(unittest.TestCase):
         self.assertTrue(lexNumberSuffix("l+12345"))
 
     def testDecimal(self):
-        self.assertTrue(lexDecimal("12345"))
+        self.assertFalse(lexDecimal("12345"))
         self.assertTrue(lexDecimal("12345e+10"))
         self.assertTrue(lexDecimal("12345e-0"))
         self.assertTrue(lexDecimal(".12345e-0"))
@@ -2419,10 +2420,10 @@ class TestLispLex(unittest.TestCase):
         self.assertFalse(val9.value)
 
         val10 = lispEval(parseExpression(parseTokens("(integer? 123)")).result[0])
-        self.assertFalse(val10.value)
+        self.assertTrue(val10.value)
 
         val11 = lispEval(parseExpression(parseTokens("(integer? #x123)")).result[0])
-        self.assertFalse(val11.value)
+        self.assertTrue(val11.value)
 
         val12 = lispEval(parseExpression(parseTokens("(integer? 1.234)")).result[0])
         self.assertFalse(val12.value)
