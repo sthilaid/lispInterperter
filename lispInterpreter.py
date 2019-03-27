@@ -902,6 +902,12 @@ def lexNumber(str):
               or lexNumberBase(str, 10, numAST)
               or lexNumberBase(str, 16, numAST))
     if result:
+        isExact = (isinstance(numAST.real.numerator, int)
+                   and isinstance(numAST.real.denominator, int)
+                   and isinstance(numAST.imag.numerator, int)
+                   and isinstance(numAST.imag.denominator, int))
+        if numAST.exactness and not isExact:
+            numAST.exact = isExact # todo: transform into exact instead of downcasting
         result.extra = numAST
         return result
     else:
@@ -1472,6 +1478,11 @@ def lispMakePrimitiveWithCount(id, pyFun, count):
 
 def lispEval(ast):
     primevalEnv = dict()
+    primevalEnv['complex?'] = lispMakePrimitiveWithCount('complex?',    lispPrimitive_isComplex, 1)
+    primevalEnv['real?']    = lispMakePrimitiveWithCount('real?',       lispPrimitive_isReal, 1)
+    primevalEnv['rational?']= lispMakePrimitiveWithCount('rational?',   lispPrimitive_isRational, 1)
+    primevalEnv['integer?'] = lispMakePrimitiveWithCount('integer?',    lispPrimitive_isInteger, 1)
+    
     primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
                                  LispValueTypes.Primitive)
     primevalEnv['*'] = LispValue(LispAST_Primitive('*', lispPrimitive_multiply),
@@ -1558,6 +1569,29 @@ def lispPrimitive_isPort(*numbers):
 
 ##-----------------------------------------------------------------------------
 ## number procedures
+
+def lispPrimitive_isComplex(*numbers):
+    isComplex = numbers[0].valueType == LispValueTypes.Number
+    return lispMakeBoolValue(isComplex)
+
+def lispPrimitive_isReal(*numbers):
+    isReal = (numbers[0].valueType == LispValueTypes.Number
+              and np.isclose(numbers[0].value.imag.numerator, 0.0))
+    return lispMakeBoolValue(isReal)
+
+def lispPrimitive_isRational(*numbers):
+    isRational = (numbers[0].valueType == LispValueTypes.Number
+                  and np.isclose(numbers[0].value.imag.numerator, 0.0)
+                  and numbers[0].value.exactness)
+    return lispMakeBoolValue(isRational)
+
+
+def lispPrimitive_isInteger(*numbers):
+    isInteger = (numbers[0].valueType == LispValueTypes.Number
+                 and np.isclose(numbers[0].value.imag.numerator, 0.0)
+                 and numbers[0].value.exactness
+                 and np.isclose(numbers[0].value.denominator, 1.0))
+    return lispMakeBoolValue(isInteger)
 
 def lispApplyNumberFun(x, y, f):
     if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
@@ -2355,6 +2389,47 @@ class TestLispLex(unittest.TestCase):
 
         val2 = lispEval(parseExpression(parseTokens("(begin 'a (+ 1 2) #t)")).result[0])
         self.assertTrue(val2.valueType)
+
+    def testNumberPredicates(self):
+        val1 = lispEval(parseExpression(parseTokens("(complex? 1+i)")).result[0])
+        self.assertTrue(val1.value)
+
+        val2 = lispEval(parseExpression(parseTokens("(complex? #xabc)")).result[0])
+        self.assertTrue(val2.value)
+
+        val3 = lispEval(parseExpression(parseTokens("(real? 123e567)")).result[0])
+        self.assertTrue(val3.value)
+
+        val4 = lispEval(parseExpression(parseTokens("(real? 1.135)")).result[0])
+        self.assertTrue(val4.value)
+
+        val5 = lispEval(parseExpression(parseTokens("(real? #b101001)")).result[0])
+        self.assertTrue(val5.value)
+
+        val6 = lispEval(parseExpression(parseTokens("(real? 1+i)")).result[0])
+        self.assertFalse(val6.value)
+
+        val7 = lispEval(parseExpression(parseTokens("(rational? 12/34)")).result[0])
+        self.assertTrue(val7.value)
+
+        val8 = lispEval(parseExpression(parseTokens("(rational? #x123abc)")).result[0])
+        self.assertTrue(val8.value)
+
+        val9 = lispEval(parseExpression(parseTokens("(rational? 1.234)")).result[0])
+        self.assertFalse(val9.value)
+
+        val10 = lispEval(parseExpression(parseTokens("(integer? 123)")).result[0])
+        self.assertFalse(val10.value)
+
+        val11 = lispEval(parseExpression(parseTokens("(integer? #x123)")).result[0])
+        self.assertFalse(val11.value)
+
+        val12 = lispEval(parseExpression(parseTokens("(integer? 1.234)")).result[0])
+        self.assertFalse(val12.value)
+
+        val13 = lispEval(parseExpression(parseTokens("(integer? 12/34)")).result[0])
+        self.assertFalse(val13.value)
+
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
