@@ -1544,6 +1544,7 @@ def lispEval(ast):
     primevalEnv['negative?']    = lispMakePrimitiveWithCount('negative?',   lispPrimitive_isNegative, 1)
     primevalEnv['odd?']         = lispMakePrimitiveWithCount('odd?',        lispPrimitive_isOdd, 1)
     primevalEnv['even?']        = lispMakePrimitiveWithCount('even?',       lispPrimitive_isEven, 1)
+    primevalEnv['max']          = lispMakePrimitiveNoCount('max',           lispPrimitive_max)
 
     return ast.eval(primevalEnv).value
 
@@ -1753,6 +1754,19 @@ def lispPrimitive_isEven(*numbers):
         return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 0)
 
+def lispPrimitive_max(*numbers):
+    if not all(lispPrimitive_isReal(n) for n in numbers):
+        print("[LispEvalError] Expecting real number for 'max'")
+        return LispEvalContext([], LispValueVoid())
+    if len(numbers) < 1:
+        print("[LispEvalError] Expecting at least 1 arguments for 'max'")
+        return LispEvalContext([], LispValueVoid())
+    best = numbers[0]
+    for i in range(1,len(numbers)):
+        if numbers[i].value.real.getFloat() > best.value.real.getFloat():
+            best = numbers[i]
+    return best
+        
 
 ##-----------------------------------------------------------------------------
 ## equality procedures
@@ -2536,6 +2550,10 @@ class TestLispLex(unittest.TestCase):
 
         val5 = lispEval(parseExpression(parseTokens("(negative? (- 5/6 1))")).result[0])
         self.assertTrue(val5.value)
+
+    def testMinMax(self):
+        val1 = lispEval(parseExpression(parseTokens("(max 1 2 3 4 -3 -2))")).result[0])
+        self.assertTrue(self.isEqual(val1.value, 4, 0))
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
