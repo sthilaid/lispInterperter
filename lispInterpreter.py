@@ -851,34 +851,50 @@ def lexNumberComplex(str, base, numAST):
     imag    = container(LispAST_Real(1,0,1,"0.0"))
     isPolar = container(False)
 
+    def reset(real, imag, isPolar):
+        real.content = LispAST_Real(1,0,1,"0.0")
+        imag.content = LispAST_Real(1,0,1,"0.0")
+        isPolar.content = False
+        return False
+        
     result = (lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
                                lambda x: assignContainer(lexSpecificCharacter(x, "@"), isPolar),
                                lambda x: assignContainer(lexRealNumber(x, base), imag)])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
                                   lambda x: lexSpecificCharacter(x, "+"),
                                   lambda x: assignContainer(lexURealNumber(x, base), imag),
                                   lambda x: lexSpecificCharacter(x, "i")])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
                                   lambda x: lexSpecificCharacter(x, "-"),
                                   lambda x: assignContainer(lexURealNumber(x, base), imag, inverse),
                                   lambda x: lexSpecificCharacter(x, "i")])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
                                   lambda x: lexSpecificCharacter(x, "+"),
                                   lambda x: assignContainer(lexSpecificCharacter(x, "i"), imag, lambda y: LispAST_Real(1, 1, 1, ""))])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: assignContainer(lexRealNumber(x, base), real),
                                   lambda x: lexSpecificCharacter(x, "-"),
                                   lambda x: assignContainer(lexSpecificCharacter(x, "i"), imag, lambda y: LispAST_Real(-1,1, 1, ""))])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: lexSpecificCharacter(x, "+"),
                                   lambda x: lexURealNumber(x, base),
                                   lambda x: assignContainer(lexSpecificCharacter(x, "i"), imag)])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: lexSpecificCharacter(x, "-"),
-                                  lambda x: assignContainer(lexURealNumber(x, base), imag, lambda y: inverse),
+                                  lambda x: assignContainer(lexURealNumber(x, base), imag, inverse),
                                   lambda x: lexSpecificCharacter(x, "i")])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: lexSpecificCharacter(x, "+"),
                                   lambda x: assignContainer(lexSpecificCharacter(x, "i"), imag, lambda y: LispAST_Real(1, 1, 1, ""))])
+              or reset(real, imag, isPolar)
               or lexCompose(str, [lambda x: lexSpecificCharacter(x, "-"),
                                   lambda x: assignContainer(lexSpecificCharacter(x, "i"), imag, lambda y: LispAST_Real(-1,1, 1, ""))])
-              or assignContainer(lexRealNumber(str, base), real))
+              or reset(real, imag, isPolar)
+              or assignContainer(lexRealNumber(str, base), real)
+              or reset(real, imag, isPolar))
 
     if result:
         #todo polar form
@@ -897,10 +913,10 @@ def lexNumberBase(str, base, numAST):
 def lexNumber(str):
     if LispLexerDebug : print("lexNumber(%s)" % (str))
     numAST = LispAST_Number()
-    result = (lexNumberBase(str, 2, numAST)
-              or lexNumberBase(str, 8, numAST)
-              or lexNumberBase(str, 10, numAST)
-              or lexNumberBase(str, 16, numAST))
+    result = (lexNumberBase(str, 10, numAST)
+              or lexNumberBase(str, 2, numAST)
+              or lexNumberBase(str, 16, numAST)
+              or lexNumberBase(str, 8, numAST))
     if result:
         isExact = (isinstance(numAST.real.numerator, int)
                    and isinstance(numAST.real.denominator, int)
@@ -952,6 +968,11 @@ class LispToken:
 
 def lexToken(str):
     if LispLexerDebug : print("lexToken(%s)" % (str))
+
+    lex = lexNumber(str)
+    if lex:
+        return LexResult(LispToken(LispTokenTypes.Number, lex.result, lex.extra), lex.rest)
+
     lex = lexIdentifier(str)
     if lex:
         return LexResult(LispToken(LispTokenTypes.Identifier, lex.result), lex.rest)
@@ -959,10 +980,6 @@ def lexToken(str):
     lex = lexBoolean(str)
     if lex:
         return LexResult(LispToken(LispTokenTypes.Boolean, lex.result, lex.extra), lex.rest)
-
-    lex = lexNumber(str)
-    if lex:
-        return LexResult(LispToken(LispTokenTypes.Number, lex.result, lex.extra), lex.rest)
 
     lex = lexCharacter(str)
     if lex:
@@ -1518,8 +1535,13 @@ def lispEval(ast):
     primevalEnv['vector?']      = lispMakePrimitiveWithCount('vector?',     lispPrimitive_isVector, 1)
     primevalEnv['procedure?']   = lispMakePrimitiveWithCount('procedure?',  lispPrimitive_isProcedure, 1)
     primevalEnv['port?']        = lispMakePrimitiveWithCount('port?',       lispPrimitive_isPort, 1)
-    primevalEnv['exact?']        = lispMakePrimitiveWithCount('exact?',     lispPrimitive_isExact, 1)
-    primevalEnv['inexact?']        = lispMakePrimitiveWithCount('inexact?', lispPrimitive_isInexact, 1)
+    primevalEnv['exact?']       = lispMakePrimitiveWithCount('exact?',      lispPrimitive_isExact, 1)
+    primevalEnv['inexact?']     = lispMakePrimitiveWithCount('inexact?',    lispPrimitive_isInexact, 1)
+    primevalEnv['zero?']        = lispMakePrimitiveWithCount('zero?',       lispPrimitive_isZero, 1)
+    primevalEnv['positive?']    = lispMakePrimitiveWithCount('positive?',   lispPrimitive_isPositive, 1)
+    primevalEnv['negative?']    = lispMakePrimitiveWithCount('negative?',   lispPrimitive_isNegative, 1)
+    primevalEnv['odd?']         = lispMakePrimitiveWithCount('odd?',        lispPrimitive_isOdd, 1)
+    primevalEnv['even?']        = lispMakePrimitiveWithCount('even?',       lispPrimitive_isEven, 1)
 
     return ast.eval(primevalEnv).value
 
@@ -1527,12 +1549,20 @@ def lispMakeBoolValue(val):
     return LispValue(val, LispValueTypes.Boolean)
 
 def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
-    sign = 1 if num >= 0 else -1
     realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
     imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
     numStr = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
-    return LispValue(LispAST_Number(10, True,
-                                    LispAST_Real(sign, num, denom, realStr),
+    if np.isclose(denom, 1):
+        denom = int(denom)
+    if np.isclose(imagDenom, 1):
+        imagDenom = int(imagDenom)
+
+    isExact = (isinstance(num, int)
+               and isinstance(denom, int)
+               and isinstance(imagNum, int)
+               and isinstance(imagDenom, int))
+    return LispValue(LispAST_Number(10, isExact,
+                                    LispAST_Real(1, num, denom, realStr),
                                     LispAST_Real(1, imagNum, imagDenom, imagStr),
                                     numStr),
                      LispValueTypes.Number)
@@ -1614,8 +1644,13 @@ def lispApplyNumberFun(x, y, f):
 def lispPrimitive_add(*numbers):
     def add(x, y):
         lcd = np.lcm(x.denominator, y.denominator)
-        numX = x.numerator * lcd / x.denominator
-        numY = y.numerator * lcd / y.denominator
+        if np.isclose(lcd, 1):
+            numX = x.numerator
+            numY = y.numerator
+            lcd = int(1)
+        else:
+            numX = x.numerator * lcd / x.denominator
+            numY = y.numerator * lcd / y.denominator
         return (numX+numY, lcd)
 
     result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, add),
@@ -1625,9 +1660,6 @@ def lispPrimitive_add(*numbers):
 
 def lispPrimitive_multiply(*numbers):
     def mul(x, y):
-        lcd = np.lcm(x.denominator, y.denominator)
-        numX = x.numerator * lcd / x.denominator
-        numY = y.numerator * lcd / y.denominator
         return (x.numerator * y.numerator, x.denominator * y.denominator)
 
     result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, mul),
@@ -1638,8 +1670,13 @@ def lispPrimitive_multiply(*numbers):
 def lispPrimitive_subtract(*numbers):
     def sub(x, y):
         lcd = np.lcm(x.denominator, y.denominator)
-        numX = x.numerator * lcd / x.denominator
-        numY = y.numerator * lcd / y.denominator
+        if np.isclose(lcd,1):
+            numX = x.numerator
+            numY = y.numerator
+            lcd = 1
+        else:
+            numX = x.numerator * lcd / x.denominator
+            numY = y.numerator * lcd / y.denominator
         return (numX-numY, lcd)
 
     if (len(numbers) == 1):
@@ -1684,8 +1721,36 @@ def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
 
 def lispPrimitive_isZero(*numbers):
-    return (np.isclose(numbers[0].value.real.numerator, 0)
-            and np.isclose(numbers[0].value.real.denominator, 0))
+    if not lispPrimitive_isNumber(*numbers).value:
+        print("[LispEvalError] Expecting only number arguments, got %s" % str(number))
+        return LispEvalContext([], LispValueVoid())
+    return lispMakeBoolValue(np.isclose(numbers[0].value.real.numerator, 0)
+                             and np.isclose(numbers[0].value.imag.numerator, 0))
+
+def lispPrimitive_isPositive(*numbers):
+    if not lispPrimitive_isReal(*numbers).value:
+        print("[LispEvalError] Expecting only real number argument, got %s" % str(numbers))
+        return LispEvalContext([], LispValueVoid())
+    return lispMakeBoolValue(numbers[0].value.real.getFloat() > 0)
+
+def lispPrimitive_isNegative(*numbers):
+    if not lispPrimitive_isReal(*numbers).value:
+        print("[LispEvalError] Expecting only real number argument, got %s" % str(numbers))
+        return LispEvalContext([], LispValueVoid())
+    return lispMakeBoolValue(numbers[0].value.real.getFloat() < 0)
+
+def lispPrimitive_isOdd(*numbers):
+    if not lispPrimitive_isInteger(*numbers).value:
+        print("[LispEvalError] Expecting only integer number argument, got %s" % str(numbers))
+        return LispEvalContext([], LispValueVoid())
+    return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 1)
+
+def lispPrimitive_isEven(*numbers):
+    if not lispPrimitive_isInteger(*numbers).value:
+        print("[LispEvalError] Expecting only integer number argument, got %s" % str(numbers))
+        return LispEvalContext([], LispValueVoid())
+    return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 0)
+
 
 ##-----------------------------------------------------------------------------
 ## equality procedures
@@ -2454,6 +2519,21 @@ class TestLispLex(unittest.TestCase):
         val17 = lispEval(parseExpression(parseTokens("(inexact? #b1010)")).result[0])
         self.assertFalse(val17.value)
 
+    def testOtherNumPredicates(self):
+        val1 = lispEval(parseExpression(parseTokens("(zero? 0e10)")).result[0])
+        self.assertTrue(val1.value)
+
+        val2 = lispEval(parseExpression(parseTokens("(zero? 2+i)")).result[0])
+        self.assertFalse(val2.value)
+
+        val3 = lispEval(parseExpression(parseTokens("(positive? 2.3e-55)")).result[0])
+        self.assertTrue(val3.value)
+
+        val4 = lispEval(parseExpression(parseTokens("(positive? -5)")).result[0])
+        self.assertFalse(val4.value)
+
+        val5 = lispEval(parseExpression(parseTokens("(negative? (- 5/6 1))")).result[0])
+        self.assertTrue(val5.value)
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
