@@ -709,9 +709,12 @@ def assignContainer(res, varCont, fn = lambda x: x):
     
 def lexSign(str):
     if LispLexerDebug : print("lexSign(%s)" % str)
-    return (lexSpecificCharacter(str, "+")
-            or lexSpecificCharacter(str, "-")
-            or lexEmpty(str))
+    sign = container(1)
+    result = (lexSpecificCharacter(str, "+")
+              or assignContainer(lexSpecificCharacter(str, "-"), sign, lambda x: -1)
+              or lexEmpty(str))
+    result.extra = sign.content
+    return result
 
 def lexUInteger(str, base):
     if LispLexerDebug : print("lexUInteger(%s, %s)" % (str, base))
@@ -826,8 +829,7 @@ def lexURealNumber(str, base):
 def lexRealNumber(str, base):
     if LispLexerDebug : print("lexRealNumber(%s, %s)" % (str, base))
 
-    sign = container(1)
-    signResult = assignContainer(lexSign(str), sign, lambda s: -1 if s == "-" else 1)
+    signResult = lexSign(str)
     if not signResult:
         return False
 
@@ -837,7 +839,7 @@ def lexRealNumber(str, base):
 
     realResult.result       = signResult.result + realResult.extra.text
     realResult.extra.text   = realResult.result
-    realResult.extra.sign   = sign.content
+    realResult.extra.sign   = signResult.extra
     return realResult
 
 def lexNumberComplex(str, base, numAST):
