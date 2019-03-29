@@ -1483,68 +1483,57 @@ class LispEvalContext:
     def __str__(self):
         return "LispEvalContext(%s,%s)" % ( self.env, self.value)
 
-def lispMakePrimitiveNoCount(id, pyFun):
+def lispMakePrimitive(id, pyFun):
     return LispValue(LispAST_Primitive(id, pyFun), LispValueTypes.Primitive)
     
-def lispMakePrimitiveWithCount(id, pyFun, count):
-    def pyFunWithChecks(*args):
-        if len(args) != count:
-            print("[LispEvalError] Invalid argment count for '%s'. Expecting %d, got %d" % (id, count, len(args)))
-            return LispEvalContext([], LispValueVoid())
-        else:
-            return pyFun(*args)
-                
-    return LispValue(LispAST_Primitive(id, pyFunWithChecks), LispValueTypes.Primitive)
-
 def lispEval(ast):
     primevalEnv = dict()
-    primevalEnv['complex?'] = lispMakePrimitiveWithCount('complex?',    lispPrimitive_isComplex, 1)
-    primevalEnv['real?']    = lispMakePrimitiveWithCount('real?',       lispPrimitive_isReal, 1)
-    primevalEnv['rational?']= lispMakePrimitiveWithCount('rational?',   lispPrimitive_isRational, 1)
-    primevalEnv['integer?'] = lispMakePrimitiveWithCount('integer?',    lispPrimitive_isInteger, 1)
-    
-    primevalEnv['+'] = LispValue(LispAST_Primitive('+', lispPrimitive_add),
-                                 LispValueTypes.Primitive)
-    primevalEnv['*'] = LispValue(LispAST_Primitive('*', lispPrimitive_multiply),
-                                 LispValueTypes.Primitive)
-    primevalEnv['-'] = LispValue(LispAST_Primitive('-', lispPrimitive_subtract),
-                                 LispValueTypes.Primitive)
+    primevalEnv['+']            = lispMakePrimitive('+',            lispPrimitive_add)
+    primevalEnv['*']            = lispMakePrimitive('*',            lispPrimitive_multiply)
+    primevalEnv['-']            = lispMakePrimitive('-',            lispPrimitive_subtract)
+    primevalEnv['/']            = lispMakePrimitive('/',            lispPrimitive_divide)
 
-    primevalEnv['<']    = lispMakePrimitiveWithCount('<', lispPrimitive_smaller, 2)
-    primevalEnv['<=']   = lispMakePrimitiveWithCount('<=', lispPrimitive_smallerEqual, 2)
-    primevalEnv['>']    = lispMakePrimitiveWithCount('>', lispPrimitive_greater, 2)
-    primevalEnv['>=']   = lispMakePrimitiveWithCount('>=', lispPrimitive_greaterEqual, 2)
-    primevalEnv['=']    = lispMakePrimitiveNoCount('=', lispPrimitive_equalNum)
+    primevalEnv['complex?']     = lispMakePrimitive('complex?',     lispPrimitive_isComplex)
+    primevalEnv['real?']        = lispMakePrimitive('real?',        lispPrimitive_isReal)
+    primevalEnv['rational?']    = lispMakePrimitive('rational?',    lispPrimitive_isRational)
+    primevalEnv['integer?']     = lispMakePrimitive('integer?',     lispPrimitive_isInteger)
+    primevalEnv['<']            = lispMakePrimitive('<',            lispPrimitive_smaller)
+    primevalEnv['<=']           = lispMakePrimitive('<=',           lispPrimitive_smallerEqual)
+    primevalEnv['>']            = lispMakePrimitive('>',            lispPrimitive_greater)
+    primevalEnv['>=']           = lispMakePrimitive('>=',           lispPrimitive_greaterEqual)
+    primevalEnv['=']            = lispMakePrimitive('=',            lispPrimitive_equalNum)
 
-    primevalEnv['char=?'] = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
-                                      LispValueTypes.Primitive)
-    primevalEnv['string=?'] = LispValue(LispAST_Primitive('string=?',
-                                                          lambda *args: lispPrimitive_equalStr(LispValueTypes.String,
-                                                                                               lambda s: s.value, *args)),
-                                        LispValueTypes.Primitive)
-    primevalEnv['null?']    = lispMakePrimitiveWithCount('null?', lispPrimitive_null, 1)
-    primevalEnv['eqv?']     = lispMakePrimitiveWithCount('eqv?', lispPrimitive_eqv, 2)
+    primevalEnv['null?']        = lispMakePrimitive('null?',        lispPrimitive_null)
+    primevalEnv['eqv?']         = lispMakePrimitive('eqv?',         lispPrimitive_eqv)
     # lazy eq? implementation...
-    primevalEnv['eq?']      = lispMakePrimitiveWithCount('eq?', lispPrimitive_eqv, 2)
-    primevalEnv['equal?']   = lispMakePrimitiveWithCount('equal?', lispPrimitive_equal, 2)
+    primevalEnv['eq?']          = lispMakePrimitive('eq?',          lispPrimitive_eqv)
+    primevalEnv['equal?']       = lispMakePrimitive('equal?',       lispPrimitive_equal)
 
-    primevalEnv['number?']      = lispMakePrimitiveWithCount('number?',     lispPrimitive_isNumber, 1)
-    primevalEnv['pair?']        = lispMakePrimitiveWithCount('pair?',       lispPrimitive_isPair, 1)
-    primevalEnv['char?']        = lispMakePrimitiveWithCount('char?',       lispPrimitive_isChar, 1)
-    primevalEnv['string?']      = lispMakePrimitiveWithCount('string?',     lispPrimitive_isString, 1)
-    primevalEnv['boolean?']     = lispMakePrimitiveWithCount('boolean?',    lispPrimitive_isBoolean, 1)
-    primevalEnv['symbol?']      = lispMakePrimitiveWithCount('symbol?',     lispPrimitive_isSymbol, 1)
-    primevalEnv['vector?']      = lispMakePrimitiveWithCount('vector?',     lispPrimitive_isVector, 1)
-    primevalEnv['procedure?']   = lispMakePrimitiveWithCount('procedure?',  lispPrimitive_isProcedure, 1)
-    primevalEnv['port?']        = lispMakePrimitiveWithCount('port?',       lispPrimitive_isPort, 1)
-    primevalEnv['exact?']       = lispMakePrimitiveWithCount('exact?',      lispPrimitive_isExact, 1)
-    primevalEnv['inexact?']     = lispMakePrimitiveWithCount('inexact?',    lispPrimitive_isInexact, 1)
-    primevalEnv['zero?']        = lispMakePrimitiveWithCount('zero?',       lispPrimitive_isZero, 1)
-    primevalEnv['positive?']    = lispMakePrimitiveWithCount('positive?',   lispPrimitive_isPositive, 1)
-    primevalEnv['negative?']    = lispMakePrimitiveWithCount('negative?',   lispPrimitive_isNegative, 1)
-    primevalEnv['odd?']         = lispMakePrimitiveWithCount('odd?',        lispPrimitive_isOdd, 1)
-    primevalEnv['even?']        = lispMakePrimitiveWithCount('even?',       lispPrimitive_isEven, 1)
-    primevalEnv['max']          = lispMakePrimitiveNoCount('max',           lispPrimitive_max)
+    primevalEnv['number?']      = lispMakePrimitive('number?',     lispPrimitive_isNumber)
+    primevalEnv['pair?']        = lispMakePrimitive('pair?',       lispPrimitive_isPair)
+    primevalEnv['char?']        = lispMakePrimitive('char?',       lispPrimitive_isChar)
+    primevalEnv['string?']      = lispMakePrimitive('string?',     lispPrimitive_isString)
+    primevalEnv['boolean?']     = lispMakePrimitive('boolean?',    lispPrimitive_isBoolean)
+    primevalEnv['symbol?']      = lispMakePrimitive('symbol?',     lispPrimitive_isSymbol)
+    primevalEnv['vector?']      = lispMakePrimitive('vector?',     lispPrimitive_isVector)
+    primevalEnv['procedure?']   = lispMakePrimitive('procedure?',  lispPrimitive_isProcedure)
+    primevalEnv['port?']        = lispMakePrimitive('port?',       lispPrimitive_isPort)
+    primevalEnv['exact?']       = lispMakePrimitive('exact?',      lispPrimitive_isExact)
+    primevalEnv['inexact?']     = lispMakePrimitive('inexact?',    lispPrimitive_isInexact)
+    primevalEnv['zero?']        = lispMakePrimitive('zero?',       lispPrimitive_isZero)
+    primevalEnv['positive?']    = lispMakePrimitive('positive?',   lispPrimitive_isPositive)
+    primevalEnv['negative?']    = lispMakePrimitive('negative?',   lispPrimitive_isNegative)
+    primevalEnv['odd?']         = lispMakePrimitive('odd?',        lispPrimitive_isOdd)
+    primevalEnv['even?']        = lispMakePrimitive('even?',       lispPrimitive_isEven)
+    primevalEnv['max']          = lispMakePrimitive('max',         lispPrimitive_max)
+    primevalEnv['min']          = lispMakePrimitive('min',         lispPrimitive_min)
+
+    primevalEnv['char=?']       = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
+                                            LispValueTypes.Primitive)
+    primevalEnv['string=?']     = LispValue(LispAST_Primitive('string=?',
+                                                              lambda *args: lispPrimitive_equalStr(LispValueTypes.String,
+                                                                                                   lambda s: s.value, *args)),
+                                            LispValueTypes.Primitive)
 
     return ast.eval(primevalEnv).value
 
@@ -1552,9 +1541,6 @@ def lispMakeBoolValue(val):
     return LispValue(val, LispValueTypes.Boolean)
 
 def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
-    realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
-    imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
-    numStr = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
     if np.isclose(denom, 1):
         denom = int(denom)
     if np.isclose(imagDenom, 1):
@@ -1564,86 +1550,169 @@ def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
                and isinstance(denom, int)
                and isinstance(imagNum, int)
                and isinstance(imagDenom, int))
+
+    if not isExact:
+        realStr = "%.2f" % num if denom == 1 else "%.2f/%.2f" % (num, denom)
+        imagStr = "" if imagNum == 0 else ("%.2f" % imagNum if imagDenom == 1 else "%.2f/%.2f" % (imagNum, imagDenom))
+    else:
+        realStr = "%d" % num if denom == 1 else "%d/%d" % (num, denom)
+        imagStr = "" if imagNum == 0 else ("%d" % imagNum if imagDenom == 1 else "%d/%d" % (imagNum, imagDenom))
+
+    numStr  = "%s" % realStr if imagStr == "" else "%s + %si" % (realStr, imagStr)
     return LispValue(LispAST_Number(10, isExact,
                                     LispAST_Real(1, num, denom, realStr),
                                     LispAST_Real(1, imagNum, imagDenom, imagStr),
                                     numStr),
                      LispValueTypes.Number)
 
+##-----------------------------------------------------------------------------
+## primitive decorators
+
+def allType(valType):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if not all(v.valueType == valType for v in args):
+                print("[LispEvalError] Invalid argument type passed to '%s'. Expecting type %s, got: %s"
+                      % (func.__name__, valType, list(map(lambda v: v.valueType, args))))
+                return LispEvalContext([], LispValueVoid())
+            else:
+                return func(*args,**kwargs)
+        return wrapper
+    return decorator
+
+def primitivePrerequesite(primitive, typeStr):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if not all(primitive(v).value for v in args):
+                print("[LispEvalError] Invalid argument type passed to '%s'. Expecting %s, got: %s"
+                      % (func.__name__, typeStr, list(map(lambda v: v.valueType, args))))
+                return LispEvalContext([], LispValueVoid())
+            else:
+                return func(*args,**kwargs)
+        return wrapper
+    return decorator
+
+def exactArgCount(count):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if len(args) != count:
+                # print("[LispEvalError] Invalid argument count for '%s'. Expecting %d, got: %d"
+                #       % (func.__name__, count, len(args)))
+                # return LispEvalContext([], LispValueVoid())
+                raise Exception("[LispEvalError] Invalid argument count for '%s'. Expecting %d, got: %d (%s)"
+                                # % (func.__name__, count, len(args), list(map(lambda x: x.value, args))))
+                                % (func.__name__, count, len(args), args))
+
+            else:
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def minArgCount(count):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if len(args) < count:
+                # print("[LispEvalError] Invalid argument count for '%s'. Expecting at least %d, got: %d"
+                #       % (func.__name__, count, len(args)))
+                raise Exception("[LispEvalError] Invalid argument count for '%s'. Expecting at least %d, got: %d"
+                                % (func.__name__, count, len(args)))
+                # return LispEvalContext([], LispValueVoid())
+            else:
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 ##-----------------------------------------------------------------------------
 ## base type predicate procedures
 
+@exactArgCount(1)
 def lispPrimitive_isNumber(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Number)
 
+@exactArgCount(1)
 def lispPrimitive_isPair(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Pair)
 
+@exactArgCount(1)
 def lispPrimitive_isChar(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Char)
 
+@exactArgCount(1)
 def lispPrimitive_isString(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.String)
 
+@exactArgCount(1)
 def lispPrimitive_isBoolean(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Boolean)
 
+@exactArgCount(1)
 def lispPrimitive_isSymbol(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Symbol)
 
+@exactArgCount(1)
 def lispPrimitive_isVector(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Vector)
 
+@exactArgCount(1)
 def lispPrimitive_isProcedure(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Procedure
                              or numbers[0].valueType == LispValueTypes.Primitive)
 
+@exactArgCount(1)
 def lispPrimitive_isPort(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Port)
 
 ##-----------------------------------------------------------------------------
 ## number procedures
 
+@exactArgCount(1)
 def lispPrimitive_isComplex(*numbers):
     isComplex = numbers[0].valueType == LispValueTypes.Number
     return lispMakeBoolValue(isComplex)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isReal(*numbers):
-    isReal = (numbers[0].valueType == LispValueTypes.Number
-              and np.isclose(numbers[0].value.imag.numerator, 0.0))
+    isReal = np.isclose(numbers[0].value.imag.numerator, 0.0)
     return lispMakeBoolValue(isReal)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isRational(*numbers):
-    isRational = (numbers[0].valueType == LispValueTypes.Number
-                  and np.isclose(numbers[0].value.imag.numerator, 0.0)
+    isRational = (np.isclose(numbers[0].value.imag.numerator, 0.0)
                   and numbers[0].value.exactness)
     return lispMakeBoolValue(isRational)
 
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isInteger(*numbers):
-    isInteger = (numbers[0].valueType == LispValueTypes.Number
-                 and np.isclose(numbers[0].value.imag.numerator, 0.0)
+    isInteger = (np.isclose(numbers[0].value.imag.numerator, 0.0)
                  and numbers[0].value.exactness
                  and np.isclose(numbers[0].value.real.denominator, 1.0))
     return lispMakeBoolValue(isInteger)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isExact(*numbers):
     return lispMakeBoolValue(numbers[0].value.exactness)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isInexact(*numbers):
     return lispMakeBoolValue(not numbers[0].value.exactness)
 
 def lispApplyNumberFun(x, y, f):
-    if x.valueType != LispValueTypes.Number or y.valueType != LispValueTypes.Number:
-        print("[LispEvalError] Invalid argment to addition primitive. Expecting Number/Number and got %s/%s" % (x.valueType, y.valueType))
-        return LispEvalContext([], LispValueVoid())
-
     realNum, realDenom = f(x.value.real, y.value.real)
     imagNum, imagDenom = f(x.value.imag, y.value.imag)
     return lispMakeNumberValue(realNum, realDenom, imagNum, imagDenom)
 
 
+@allType(LispValueTypes.Number)
 def lispPrimitive_add(*numbers):
     def add(x, y):
         lcd = np.lcm(x.denominator, y.denominator)
@@ -1661,6 +1730,7 @@ def lispPrimitive_add(*numbers):
                               lispMakeNumberValue(0))
     return result
 
+@allType(LispValueTypes.Number)
 def lispPrimitive_multiply(*numbers):
     def mul(x, y):
         return (x.numerator * y.numerator, x.denominator * y.denominator)
@@ -1670,6 +1740,8 @@ def lispPrimitive_multiply(*numbers):
                               lispMakeNumberValue(1))
     return result
 
+@allType(LispValueTypes.Number)
+@minArgCount(1)
 def lispPrimitive_subtract(*numbers):
     def sub(x, y):
         lcd = np.lcm(x.denominator, y.denominator)
@@ -1687,22 +1759,24 @@ def lispPrimitive_subtract(*numbers):
                                    numbers[0].value.real.denominator,
                                    -numbers[0].value.imag.numerator,
                                    numbers[0].value.imag.denominator)
-    elif (len(numbers) < 2):
-        print("[LispEvalError] Invalid argment count for '-'. Expecting at least 1, got %d" % len(numbers))
-        return LispEvalContext([], LispValueVoid())
-
     result = functools.reduce(lambda a,x: lispApplyNumberFun(a, x, sub),
                               numbers[1:],
                               numbers[0])
     return result
 
-def lispPrimitive_binary(fn, fnName, *numbers):
-    if (numbers[0].valueType != LispValueTypes.Number
-        or numbers[1].valueType != LispValueTypes.Number):
-        print("[LispEvalError] Invalid argment types for '%s'. Expecting Number/Number, got %s/%s"
-              % (fnName, number[0].valueType, number[1].valueType))
-        return LispEvalContext([], LispValueVoid())
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@minArgCount(1)
+def lispPrimitive_divide(*numbers):
+    @primitivePrerequesite(lispPrimitive_isInteger, "integer")
+    def makeRatio(n):
+        return lispMakeNumberValue(1, n.value.real.numerator, 0, 1)
 
+    if (len(numbers) == 1):
+        return makeRatio(numbers[0])
+    denominator = lispPrimitive_multiply(numbers[1:]).value
+    return lispMakeNumberValue(numbers[0].value.real.numerator, denominator, 0, 1)
+
+def lispPrimitive_binary(fn, fnName, *numbers):
     if ((not np.isclose(numbers[0].value.imag.numerator, 0.0))
         or (not np.isclose(numbers[1].value.imag.numerator, 0.0))):
         print("[LispEvalError] Expecting real arguments for '%s'" % fnName)
@@ -1711,59 +1785,75 @@ def lispPrimitive_binary(fn, fnName, *numbers):
     retVal = fn(numbers[0].value.real.getFloat(), numbers[1].value.real.getFloat())
     return LispValue(retVal, LispValueTypes.Boolean)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(2)
 def lispPrimitive_smaller(*numbers):
     return lispPrimitive_binary(lambda x,y: x<y, "<", *numbers)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(2)
 def lispPrimitive_smallerEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x<=y, "<=", *numbers)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(2)
 def lispPrimitive_greater(*numbers):
     return lispPrimitive_binary(lambda x,y: x>y, ">", *numbers)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(2)
 def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
 
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
 def lispPrimitive_isZero(*numbers):
-    if not lispPrimitive_isNumber(*numbers).value:
-        print("[LispEvalError] Expecting only number arguments, got %s" % str(number))
-        return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(np.isclose(numbers[0].value.real.numerator, 0)
                              and np.isclose(numbers[0].value.imag.numerator, 0))
 
+
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
 def lispPrimitive_isPositive(*numbers):
-    if not lispPrimitive_isReal(*numbers).value:
-        print("[LispEvalError] Expecting only real number argument, got %s" % str(numbers))
-        return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(numbers[0].value.real.getFloat() > 0)
 
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
 def lispPrimitive_isNegative(*numbers):
-    if not lispPrimitive_isReal(*numbers).value:
-        print("[LispEvalError] Expecting only real number argument, got %s" % str(numbers))
-        return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(numbers[0].value.real.getFloat() < 0)
 
+@primitivePrerequesite(lispPrimitive_isInexact, "integer")
+@exactArgCount(1)
 def lispPrimitive_isOdd(*numbers):
-    if not lispPrimitive_isInteger(*numbers).value:
-        print("[LispEvalError] Expecting only integer number argument, got %s" % str(numbers))
-        return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 1)
 
+@primitivePrerequesite(lispPrimitive_isInexact, "integer")
+@exactArgCount(1)
 def lispPrimitive_isEven(*numbers):
-    if not lispPrimitive_isInteger(*numbers).value:
-        print("[LispEvalError] Expecting only integer number argument, got %s" % str(numbers))
-        return LispEvalContext([], LispValueVoid())
     return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 0)
 
+def lispFoldlValues(*values, fn, init, fnName):
+    acc = init
+    for i in range(len(values)):
+        if fn(acc, values[i]):
+            acc = values[i]
+    return acc
+
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@minArgCount(1)
 def lispPrimitive_max(*numbers):
-    if not all(lispPrimitive_isReal(n) for n in numbers):
-        print("[LispEvalError] Expecting real number for 'max'")
-        return LispEvalContext([], LispValueVoid())
-    if len(numbers) < 1:
-        print("[LispEvalError] Expecting at least 1 arguments for 'max'")
-        return LispEvalContext([], LispValueVoid())
     best = numbers[0]
     for i in range(1,len(numbers)):
         if numbers[i].value.real.getFloat() > best.value.real.getFloat():
+            best = numbers[i]
+    return best
+
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@minArgCount(1)
+def lispPrimitive_min(*numbers):
+    best = numbers[0]
+    for i in range(1,len(numbers)):
+        if numbers[i].value.real.getFloat() < best.value.real.getFloat():
             best = numbers[i]
     return best
         
@@ -1771,28 +1861,24 @@ def lispPrimitive_max(*numbers):
 ##-----------------------------------------------------------------------------
 ## equality procedures
 
+@allType(LispValueTypes.Number)
 def lispPrimitive_equalNum(*numbers):
     if len(numbers) == 0:
         return lispMakeBoolValue(True)
     
-    if not all(n.valueType == LispValueTypes.Number for n in numbers):
-        print("[LispEvalError] Expecting only number arguments for '='")
-        return LispEvalContext([], LispValueVoid())
-
     for i in range(1, len(numbers)):
         if not numbers[i-1].value.equals(numbers[i].value):
             return lispMakeBoolValue(False)
     return lispMakeBoolValue(True)
 
+@allType(LispValueTypes.Char)
 def lispPrimitive_equalChr(*args):
-    if not all(c.valueType == LispValueTypes.Char for c in args):
-        print("[LispEvalError] expecting only character arguments for 'char=?'...")
-        return LispEvalContext([], LispValueVoid())
     for i in range(len(args)-1):
         if args[i].value != args[i+1].value:
             return LispValueBool(False)
     return LispValueBool(True)
-        
+
+@minArgCount(4)
 def lispPrimitive_equalStr(strType = LispValueTypes.String, getStr = lambda s: s.value, *args):
     if not all(c.valueType == strType for c in args):
         print("[LispEvalError] expecting only character arguments for 'string=?'... got: %s" % str(args))
@@ -1811,11 +1897,13 @@ def lispPrimitive_equalStr(strType = LispValueTypes.String, getStr = lambda s: s
             return LispValueBool(False)
     return LispValueBool(True)
 
+@exactArgCount(1)
 def lispPrimitive_null(*args):
     return LispValueBool(args[0].valueType == LispValueTypes.Pair
                          and args[0].value.head == []
                          and args[0].value.tail == False)
 
+@exactArgCount(2)
 def lispPrimitive_eqv(*args):
     if args[0].valueType != args[1].valueType:
         return LispValueBool(False)
@@ -1836,6 +1924,7 @@ def lispPrimitive_eqv(*args):
 
     return args[0].value == args[1].value
 
+@exactArgCount(2)
 def lispPrimitive_equal(*args):
     def equal_rec(x, y):
         # print("test: %s, %s" % (x,y))
@@ -2397,6 +2486,13 @@ class TestLispLex(unittest.TestCase):
         valCond4 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((+ 2 2) => (lambda (x) (+ x 2))) (else 'a 'b 'cee))")).result[0])
         self.assertTrue(self.isEqual(valCond4.value, 6, 0))
 
+    def testPrimitivesCoreArithmetics(self):
+        val1 = lispEval(parseExpression(parseTokens("(/ 3)")).result[0])
+        self.assertTrue(val1.value.real.numerator == 1 and val1.value.real.denominator == 3)
+
+        val2 = lispEval(parseExpression(parseTokens("(/ 64 2 4 8)")).result[0])
+        self.assertTrue(isEqual(val2.value, 1, 0))
+        
     def testPrimitivesEquality(self):
         valEqv1 = lispEval(parseExpression(parseTokens("((lambda (x) (if (eqv? 'allo x) 'yes 'no)) 'allo)")).result[0])
         self.assertTrue(valEqv1.value.text == "yes")
