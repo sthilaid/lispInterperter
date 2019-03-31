@@ -1033,6 +1033,10 @@ def parseTokens(str):
                        LispTokenTypes.Character, LispTokenTypes.Dot]
     input = str
     while True:
+        space = lexInterTokenSpace(input)
+        if space:
+            input = space.rest
+        
         lex = lexToken(input)
         if not lex:
             if not input:
@@ -1046,9 +1050,6 @@ def parseTokens(str):
                 delim = lexDelimiter(input)
                 if input and not delim :
                     return False
-            rest = lexInterTokenSpace(input)
-            if rest:
-                input = rest.rest
             tokens += [token]
     return tokens
 
@@ -1421,20 +1422,22 @@ def parseDefinition(tokens):
                              LispAST_Begin)
     return parsedResult
 
-# def parseSyntaxDefinition(tokens):
-#     if LispLexerDebug : print("parseSyntaxDefinition(%s)" % tokens)
-#     return parseSExpWithId(tokens, "define-syntax", [parseKeyword, parseTransformerSpec])
+def parseSyntaxDefinition(tokens):
+    if LispLexerDebug : print("parseSyntaxDefinition(%s)" % tokens)
+    return False # todo
+    # return parseSExpWithId(tokens, "define-syntax", [parseKeyword, parseTransformerSpec])
 
 
-# def parseCommandOrDefinition(tokens):
-#     return (parseCommand(tokens)
-#             or parseDefinition(tokens)
-#             or parseSyntaxDefinition(tokens)
-#             or parseSExpWithId(tokens, "begin", [lambda x: lexMultiple(x, 1, [parseCommandOrDefinition], init=[])]))
+def parseCommandOrDefinition(tokens):
+    return (parseCommand(tokens)
+            or parseDefinition(tokens)
+            or parseSyntaxDefinition(tokens)
+            or parseSExp(tokens, "begin", [lambda x: lexMultiple(x, 1, [parseCommandOrDefinition])],
+                         LispAST_Begin))
     
-# def parseProgram(tokens):
-#     if LispLexerDebug : print("parseProgram(%s)" % tokens)
-#     return parseCommandOrDefinition(tokens)
+def parseProgram(tokens):
+    if LispLexerDebug : print("parseProgram(%s)" % tokens)
+    return parseMultiple(tokens, 0, parseCommandOrDefinition)
 
 # def parseSyntaxSpec(tokens):
 #     # return parseSExp(tokens, [parseKeyword, parseTransformerSpec])
@@ -1488,63 +1491,6 @@ class LispEvalContext:
 def lispMakePrimitive(id, pyFun):
     return LispValue(LispAST_Primitive(id, pyFun), LispValueTypes.Primitive)
     
-def lispEval(ast):
-    primevalEnv = dict()
-    primevalEnv['+']            = lispMakePrimitive('+',            lispPrimitive_add)
-    primevalEnv['*']            = lispMakePrimitive('*',            lispPrimitive_multiply)
-    primevalEnv['-']            = lispMakePrimitive('-',            lispPrimitive_subtract)
-    primevalEnv['/']            = lispMakePrimitive('/',            lispPrimitive_divide)
-
-    primevalEnv['complex?']     = lispMakePrimitive('complex?',     lispPrimitive_isComplex)
-    primevalEnv['real?']        = lispMakePrimitive('real?',        lispPrimitive_isReal)
-    primevalEnv['rational?']    = lispMakePrimitive('rational?',    lispPrimitive_isRational)
-    primevalEnv['integer?']     = lispMakePrimitive('integer?',     lispPrimitive_isInteger)
-    primevalEnv['<']            = lispMakePrimitive('<',            lispPrimitive_smaller)
-    primevalEnv['<=']           = lispMakePrimitive('<=',           lispPrimitive_smallerEqual)
-    primevalEnv['>']            = lispMakePrimitive('>',            lispPrimitive_greater)
-    primevalEnv['>=']           = lispMakePrimitive('>=',           lispPrimitive_greaterEqual)
-    primevalEnv['=']            = lispMakePrimitive('=',            lispPrimitive_equalNum)
-
-    primevalEnv['null?']        = lispMakePrimitive('null?',        lispPrimitive_null)
-    primevalEnv['eqv?']         = lispMakePrimitive('eqv?',         lispPrimitive_eqv)
-    # lazy eq? implementation...
-    primevalEnv['eq?']          = lispMakePrimitive('eq?',          lispPrimitive_eqv)
-    primevalEnv['equal?']       = lispMakePrimitive('equal?',       lispPrimitive_equal)
-
-    primevalEnv['number?']      = lispMakePrimitive('number?',      lispPrimitive_isNumber)
-    primevalEnv['pair?']        = lispMakePrimitive('pair?',        lispPrimitive_isPair)
-    primevalEnv['char?']        = lispMakePrimitive('char?',        lispPrimitive_isChar)
-    primevalEnv['string?']      = lispMakePrimitive('string?',      lispPrimitive_isString)
-    primevalEnv['boolean?']     = lispMakePrimitive('boolean?',     lispPrimitive_isBoolean)
-    primevalEnv['symbol?']      = lispMakePrimitive('symbol?',      lispPrimitive_isSymbol)
-    primevalEnv['vector?']      = lispMakePrimitive('vector?',      lispPrimitive_isVector)
-    primevalEnv['procedure?']   = lispMakePrimitive('procedure?',   lispPrimitive_isProcedure)
-    primevalEnv['port?']        = lispMakePrimitive('port?',        lispPrimitive_isPort)
-    primevalEnv['exact?']       = lispMakePrimitive('exact?',       lispPrimitive_isExact)
-    primevalEnv['inexact?']     = lispMakePrimitive('inexact?',     lispPrimitive_isInexact)
-    primevalEnv['zero?']        = lispMakePrimitive('zero?',        lispPrimitive_isZero)
-    primevalEnv['positive?']    = lispMakePrimitive('positive?',    lispPrimitive_isPositive)
-    primevalEnv['negative?']    = lispMakePrimitive('negative?',    lispPrimitive_isNegative)
-    primevalEnv['odd?']         = lispMakePrimitive('odd?',         lispPrimitive_isOdd)
-    primevalEnv['even?']        = lispMakePrimitive('even?',        lispPrimitive_isEven)
-    primevalEnv['max']          = lispMakePrimitive('max',          lispPrimitive_max)
-    primevalEnv['min']          = lispMakePrimitive('min',          lispPrimitive_min)
-    primevalEnv['abs']          = lispMakePrimitive('abs',          lispPrimitive_abs)
-    primevalEnv['quotient']     = lispMakePrimitive('quotient',     lispPrimitive_quotient)
-    primevalEnv['remainder']    = lispMakePrimitive('remainder',    lispPrimitive_remainder)
-    primevalEnv['modulo']       = lispMakePrimitive('modulo',       lispPrimitive_modulo)
-    primevalEnv['gcd']          = lispMakePrimitive('gcd',          lispPrimitive_gcd)
-    primevalEnv['lcm']          = lispMakePrimitive('lcm',          lispPrimitive_lcm)
-
-    primevalEnv['char=?']       = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
-                                            LispValueTypes.Primitive)
-    primevalEnv['string=?']     = LispValue(LispAST_Primitive('string=?',
-                                                              lambda *args: lispPrimitive_equalStr(LispValueTypes.String,
-                                                                                                   lambda s: s.value, *args)),
-                                            LispValueTypes.Primitive)
-
-    return ast.eval(primevalEnv).value
-
 def lispMakeBoolValue(val):
     return LispValue(val, LispValueTypes.Boolean)
 
@@ -1634,42 +1580,59 @@ def minArgCount(count):
         return wrapper
     return decorator
 
+class primitive:
+    env = []
+    def __init__(self, envId):
+        self.envId = envId
+    def __call__(self, prim):
+        primitive.env = primitive.env + [(self.envId, prim)]
+        return prim
+
 ##-----------------------------------------------------------------------------
 ## base type predicate procedures
 
+@primitive("number?")
 @exactArgCount(1)
 def lispPrimitive_isNumber(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Number)
 
+@primitive("pair?")
 @exactArgCount(1)
 def lispPrimitive_isPair(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Pair)
 
+@primitive("char?")
 @exactArgCount(1)
 def lispPrimitive_isChar(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Char)
 
+@primitive("string?")
 @exactArgCount(1)
 def lispPrimitive_isString(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.String)
 
+@primitive("boolean?")
 @exactArgCount(1)
 def lispPrimitive_isBoolean(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Boolean)
 
+@primitive("symbol?")
 @exactArgCount(1)
 def lispPrimitive_isSymbol(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Symbol)
 
+@primitive("vector?")
 @exactArgCount(1)
 def lispPrimitive_isVector(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Vector)
 
+@primitive("procedure?")
 @exactArgCount(1)
 def lispPrimitive_isProcedure(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Procedure
                              or numbers[0].valueType == LispValueTypes.Primitive)
 
+@primitive("port?")
 @exactArgCount(1)
 def lispPrimitive_isPort(*numbers):
     return lispMakeBoolValue(numbers[0].valueType == LispValueTypes.Port)
@@ -1677,17 +1640,20 @@ def lispPrimitive_isPort(*numbers):
 ##-----------------------------------------------------------------------------
 ## number procedures
 
+@primitive("complex?")
 @exactArgCount(1)
 def lispPrimitive_isComplex(*numbers):
     isComplex = numbers[0].valueType == LispValueTypes.Number
     return lispMakeBoolValue(isComplex)
 
+@primitive("real?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isReal(*numbers):
     isReal = np.isclose(numbers[0].value.imag.numerator, 0.0)
     return lispMakeBoolValue(isReal)
 
+@primitive("rational?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isRational(*numbers):
@@ -1696,6 +1662,7 @@ def lispPrimitive_isRational(*numbers):
     return lispMakeBoolValue(isRational)
 
 
+@primitive("integer?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isInteger(*numbers):
@@ -1704,11 +1671,13 @@ def lispPrimitive_isInteger(*numbers):
                  and np.isclose(numbers[0].value.real.denominator, 1.0))
     return lispMakeBoolValue(isInteger)
 
+@primitive("exact?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isExact(*numbers):
     return lispMakeBoolValue(numbers[0].value.exactness)
 
+@primitive("inexact?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isInexact(*numbers):
@@ -1720,6 +1689,7 @@ def lispApplyNumberFun(x, y, f):
     return lispMakeNumberValue(realNum, realDenom, imagNum, imagDenom)
 
 
+@primitive("+")
 @allType(LispValueTypes.Number)
 def lispPrimitive_add(*numbers):
     def add(x, y):
@@ -1738,6 +1708,7 @@ def lispPrimitive_add(*numbers):
                               lispMakeNumberValue(0))
     return result
 
+@primitive("*")
 @allType(LispValueTypes.Number)
 def lispPrimitive_multiply(*numbers):
     def mul(x, y):
@@ -1748,6 +1719,7 @@ def lispPrimitive_multiply(*numbers):
                               lispMakeNumberValue(1))
     return result
 
+@primitive("-")
 @allType(LispValueTypes.Number)
 @minArgCount(1)
 def lispPrimitive_subtract(*numbers):
@@ -1774,6 +1746,7 @@ def lispPrimitive_subtract(*numbers):
                               numbers[0])
     return result
 
+@primitive("/")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @minArgCount(1)
 def lispPrimitive_divide(*numbers):
@@ -1799,26 +1772,31 @@ def lispPrimitive_binary(fn, fnName, *numbers):
     retVal = fn(numbers[0].value.real.getFloat(), numbers[1].value.real.getFloat())
     return LispValue(retVal, LispValueTypes.Boolean)
 
+@primitive("<")
 @allType(LispValueTypes.Number)
 @exactArgCount(2)
 def lispPrimitive_smaller(*numbers):
     return lispPrimitive_binary(lambda x,y: x<y, "<", *numbers)
 
+@primitive("<=")
 @allType(LispValueTypes.Number)
 @exactArgCount(2)
 def lispPrimitive_smallerEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x<=y, "<=", *numbers)
 
+@primitive(">")
 @allType(LispValueTypes.Number)
 @exactArgCount(2)
 def lispPrimitive_greater(*numbers):
     return lispPrimitive_binary(lambda x,y: x>y, ">", *numbers)
 
+@primitive(">=")
 @allType(LispValueTypes.Number)
 @exactArgCount(2)
 def lispPrimitive_greaterEqual(*numbers):
     return lispPrimitive_binary(lambda x,y: x>=y, ">=", *numbers)
 
+@primitive("zero?")
 @allType(LispValueTypes.Number)
 @exactArgCount(1)
 def lispPrimitive_isZero(*numbers):
@@ -1826,21 +1804,25 @@ def lispPrimitive_isZero(*numbers):
                              and np.isclose(numbers[0].value.imag.numerator, 0))
 
 
+@primitive("positive?")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @exactArgCount(1)
 def lispPrimitive_isPositive(*numbers):
     return lispMakeBoolValue(numbers[0].value.real.getFloat() > 0)
 
+@primitive("negative?")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @exactArgCount(1)
 def lispPrimitive_isNegative(*numbers):
     return lispMakeBoolValue(numbers[0].value.real.getFloat() < 0)
 
+@primitive("odd?")
 @primitivePrerequesite(lispPrimitive_isInexact, "integer")
 @exactArgCount(1)
 def lispPrimitive_isOdd(*numbers):
     return lispMakeBoolValue(np.mod(numbers[0].value.real.numerator, 2) == 1)
 
+@primitive("even?")
 @primitivePrerequesite(lispPrimitive_isInexact, "integer")
 @exactArgCount(1)
 def lispPrimitive_isEven(*numbers):
@@ -1853,6 +1835,7 @@ def lispFoldlValues(*values, fn, init, fnName):
             acc = values[i]
     return acc
 
+@primitive("max")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @minArgCount(1)
 def lispPrimitive_max(*numbers):
@@ -1862,6 +1845,7 @@ def lispPrimitive_max(*numbers):
             best = numbers[i]
     return best
 
+@primitive("min")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @minArgCount(1)
 def lispPrimitive_min(*numbers):
@@ -1871,18 +1855,21 @@ def lispPrimitive_min(*numbers):
             best = numbers[i]
     return best
 
+@primitive("abs")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @exactArgCount(1)
 def lispPrimitive_abs(*numbers):
     return lispMakeNumberValue(numbers[0].value.real.numerator, numbers[0].value.real.denominator,
                                numbers[0].value.imag.numerator, numbers[0].value.imag.denominator)
 
+@primitive("quotient")
 @primitivePrerequesite(lispPrimitive_isInteger, "integer")
 @exactArgCount(2)
 def lispPrimitive_quotient(*numbers):
     val = int(numbers[0].value.real.getInt() / numbers[1].value.real.getInt())
     return lispMakeNumberValue(val, 1, 0, 1)
 
+@primitive("remainder")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @exactArgCount(2)
 def lispPrimitive_remainder(*numbers):
@@ -1891,6 +1878,7 @@ def lispPrimitive_remainder(*numbers):
     val = int(np.round((x/y - int(x/y)) * y))
     return lispMakeNumberValue(val, 1, 0, 1)
 
+@primitive("modulo")
 @primitivePrerequesite(lispPrimitive_isInteger, "integer")
 @exactArgCount(2)
 def lispPrimitive_modulo(*numbers):
@@ -1899,6 +1887,7 @@ def lispPrimitive_modulo(*numbers):
     val = rem + y if (y * rem) < 0 else rem
     return lispMakeNumberValue(val, 1, 0, 1)
 
+@primitive("gcd")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 def lispPrimitive_gcd(*numbers):
     if len(numbers) == 0:
@@ -1907,6 +1896,7 @@ def lispPrimitive_gcd(*numbers):
     gcd = np.gcd.reduce(list(map(lambda n: int(n.value.real.getInt()), numbers)))
     return lispMakeNumberValue(gcd, 1, 0, 1)
 
+@primitive("lcm")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 def lispPrimitive_lcm(*numbers):
     if len(numbers) == 0:
@@ -1915,9 +1905,47 @@ def lispPrimitive_lcm(*numbers):
     lcm = np.lcm.reduce(list(map(lambda n: int(n.value.real.getInt()), numbers)))
     return lispMakeNumberValue(lcm, 1, 0, 1)
 
+@primitive("numerator")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_numerator(*numbers):
+    return lispMakeNumberValue(numbers[0].value.real.getInt(), 1, 0, 1)
+
+@primitive("denominator")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_denominator(*numbers):
+    return lispMakeNumberValue(numbers[0].value.real.denominator, 1, 0, 1)
+
+@primitive("floor")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_floor(*numbers):
+    return lispMakeNumberValue(np.floor(numbers[0].value.real.getFloat()))
+
+@primitive("ceiling")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_ceiling(*numbers):
+    return lispMakeNumberValue(np.ceil(numbers[0].value.real.getFloat()))
+
+@primitive("truncate")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_round(*numbers):
+    x       = numbers[0].value.real.getFloat()
+    return lispMakeNumberValue(int(x))
+
+@primitive("round")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(1)
+def lispPrimitive_round(*numbers):
+    return lispMakeNumberValue(np.round(numbers[0].value.real.getFloat()))
+
 ##-----------------------------------------------------------------------------
 ## equality procedures
 
+@primitive("=")
 @allType(LispValueTypes.Number)
 def lispPrimitive_equalNum(*numbers):
     if len(numbers) == 0:
@@ -1954,12 +1982,14 @@ def lispPrimitive_equalStr(strType = LispValueTypes.String, getStr = lambda s: s
             return LispValueBool(False)
     return LispValueBool(True)
 
+@primitive("null?")
 @exactArgCount(1)
 def lispPrimitive_null(*args):
     return LispValueBool(args[0].valueType == LispValueTypes.Pair
                          and args[0].value.head == []
                          and args[0].value.tail == False)
 
+@primitive("eqv?")
 @exactArgCount(2)
 def lispPrimitive_eqv(*args):
     if args[0].valueType != args[1].valueType:
@@ -1981,6 +2011,7 @@ def lispPrimitive_eqv(*args):
 
     return args[0].value == args[1].value
 
+@primitive("equal?")
 @exactArgCount(2)
 def lispPrimitive_equal(*args):
     def equal_rec(x, y):
@@ -2038,8 +2069,41 @@ def lispPrimitive_equal(*args):
     return equal_rec(args[0].value, args[1].value)
 
 ##-----------------------------------------------------------------------------
-## bool procedures
+## Eval!
 
+def lispPrimevalEnv():
+    primevalEnv = dict()
+    for p in primitive.env:
+        id = p[0]
+        prim = p[1]
+        primevalEnv[id] = lispMakePrimitive(id, prim)
+
+    primevalEnv['char=?']       = LispValue(LispAST_Primitive('char=?', lispPrimitive_equalChr),
+                                            LispValueTypes.Primitive)
+    primevalEnv['string=?']     = LispValue(LispAST_Primitive('string=?',
+                                                              lambda *args: lispPrimitive_equalStr(LispValueTypes.String,
+                                                                                                   lambda s: s.value, *args)),
+                                            LispValueTypes.Primitive)
+    return primevalEnv
+
+def lispEvalAST(ast):
+    return ast.eval(lispPrimevalEnv()).value
+
+def lispEval(str):
+    tokens = parseTokens(str)
+    if not tokens:
+        print("lexical error in input, cannot evaluate...")
+        return
+    program = parseProgram(tokens)
+    if not program:
+        print("syntaxic error in input, cannot evaluate...")
+        return
+    env = lispPrimevalEnv()
+    result = LispValueVoid()
+    for expr in program.result[0]:
+        result = expr.eval(env)
+        env = result.env
+    return result.value
 
 ###############################################################################
 ## Unit tests
@@ -2453,322 +2517,342 @@ class TestLispLex(unittest.TestCase):
                 and np.isclose(n.imag.getFloat(), i))
 
     def testEval(self):
-        val = lispEval(parseExpression(parseTokens("12e3+5i")).result[0])
+        val = lispEvalAST(parseExpression(parseTokens("12e3+5i")).result[0])
         self.assertTrue(self.isEqual(val.value, 12000.0, 5.0))
         
-        val2 = lispEval(parseExpression(parseTokens("#b101")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("#b101")).result[0])
         self.assertTrue(self.isEqual(val2.value, 5.0, 0.0))
 
-        valFalse = lispEval(parseExpression(parseTokens("#f")).result[0])
+        valFalse = lispEvalAST(parseExpression(parseTokens("#f")).result[0])
         self.assertTrue(valFalse.value == False)
 
-        valTrue = lispEval(parseExpression(parseTokens("#t")).result[0])
+        valTrue = lispEvalAST(parseExpression(parseTokens("#t")).result[0])
         self.assertTrue(valTrue.value == True)
 
-        valCharZ = lispEval(parseExpression(parseTokens("#\\Z")).result[0])
+        valCharZ = lispEvalAST(parseExpression(parseTokens("#\\Z")).result[0])
         self.assertTrue(valCharZ.value == "Z")
 
-        valStr = lispEval(parseExpression(parseTokens("\"hello World\"")).result[0])
+        valStr = lispEvalAST(parseExpression(parseTokens("\"hello World\"")).result[0])
         self.assertTrue(valStr.value == "hello World")
 
-        valLam = lispEval(parseExpression(parseTokens("(lambda (x) x)")).result[0])
+        valLam = lispEvalAST(parseExpression(parseTokens("(lambda (x) x)")).result[0])
         self.assertTrue(valLam.valueType == LispValueTypes.Procedure)
 
-        valLamCall1 = lispEval(parseExpression(parseTokens("((lambda (x) x) 1)")).result[0])
+        valLamCall1 = lispEvalAST(parseExpression(parseTokens("((lambda (x) x) 1)")).result[0])
         self.assertTrue(self.isEqual(valLamCall1.value, 1, 0))
 
-        valLamCall2 = lispEval(parseExpression(parseTokens("((lambda (x y) y) 1 2)")).result[0])
+        valLamCall2 = lispEvalAST(parseExpression(parseTokens("((lambda (x y) y) 1 2)")).result[0])
         self.assertTrue(self.isEqual(valLamCall2.value, 2, 0))
 
-        valLamCall1r = lispEval(parseExpression(parseTokens("((lambda (x . r) r) 1 2 3)")).result[0])
+        valLamCall1r = lispEvalAST(parseExpression(parseTokens("((lambda (x . r) r) 1 2 3)")).result[0])
         self.assertTrue(len(valLamCall1r.value.head) == 2)
 
-        valLamCalln = lispEval(parseExpression(parseTokens("((lambda n n) 1 2 3)")).result[0])
+        valLamCalln = lispEvalAST(parseExpression(parseTokens("((lambda n n) 1 2 3)")).result[0])
         self.assertTrue(len(valLamCalln.value.head) == 3)
 
-        valLamCallPrim = lispEval(parseExpression(parseTokens("((lambda (x y z) (- x y z)) 10 2 (- 4.4-3i))")).result[0])
+        valLamCallPrim = lispEvalAST(parseExpression(parseTokens("((lambda (x y z) (- x y z)) 10 2 (- 4.4-3i))")).result[0])
         self.assertTrue(self.isEqual(valLamCallPrim.value, 12.4, 3.0))
 
-        valLamCallDef = lispEval(parseExpression(parseTokens("((lambda (x) (define (double x) (+ x x)) (double x)) #xFF)")).result[0])
+        valLamCallDef = lispEvalAST(parseExpression(parseTokens("((lambda (x) (define (double x) (+ x x)) (double x)) #xFF)")).result[0])
         self.assertTrue(self.isEqual(valLamCallDef.value, 510, 0))
 
-        valQuote1 = lispEval(parseExpression(parseTokens("'(a b c)")).result[0])
+        valQuote1 = lispEvalAST(parseExpression(parseTokens("'(a b c)")).result[0])
         self.assertTrue(valQuote1.valueType == LispValueTypes.Pair)
 
-        valQuote2 = lispEval(parseExpression(parseTokens("''(a b c)")).result[0])
+        valQuote2 = lispEvalAST(parseExpression(parseTokens("''(a b c)")).result[0])
         self.assertTrue(valQuote2.valueType == LispValueTypes.Pair)
 
-        valQuote3 = lispEval(parseExpression(parseTokens("'#(a b c)")).result[0])
+        valQuote3 = lispEvalAST(parseExpression(parseTokens("'#(a b c)")).result[0])
         self.assertTrue(valQuote3.valueType == LispValueTypes.Vector)
 
-        valIf = lispEval(parseExpression(parseTokens("(if #f 'yes 'no)")).result[0])
+        valIf = lispEvalAST(parseExpression(parseTokens("(if #f 'yes 'no)")).result[0])
         self.assertTrue(valIf.value.text == "no")
 
-        valIf2 = lispEval(parseExpression(parseTokens("(if #t 'yes 'no)")).result[0])
+        valIf2 = lispEvalAST(parseExpression(parseTokens("(if #t 'yes 'no)")).result[0])
         self.assertTrue(valIf2.value.text == "yes")
 
-        valIf3 = lispEval(parseExpression(parseTokens("(if 'no 'yes 'no)")).result[0])
+        valIf3 = lispEvalAST(parseExpression(parseTokens("(if 'no 'yes 'no)")).result[0])
         self.assertTrue(valIf3.value.text == "yes")
 
-        valIf4 = lispEval(parseExpression(parseTokens("(if ((lambda (x) #t) 3) 'yes 'no)")).result[0])
+        valIf4 = lispEvalAST(parseExpression(parseTokens("(if ((lambda (x) #t) 3) 'yes 'no)")).result[0])
         self.assertTrue(valIf4.value.text == "yes")
 
-        valCmp1 = lispEval(parseExpression(parseTokens("(if (< 1 2) 'yes 'no)")).result[0])
+        valCmp1 = lispEvalAST(parseExpression(parseTokens("(if (< 1 2) 'yes 'no)")).result[0])
         self.assertTrue(valCmp1.value.text == "yes")
 
-        valCmp2 = lispEval(parseExpression(parseTokens("(if (<= 2.22 2.22) 'yes 'no)")).result[0])
+        valCmp2 = lispEvalAST(parseExpression(parseTokens("(if (<= 2.22 2.22) 'yes 'no)")).result[0])
         self.assertTrue(valCmp2.value.text == "yes")
 
-        valCmp3 = lispEval(parseExpression(parseTokens("(if (>= #xFF #xFF) 'yes 'no)")).result[0])
+        valCmp3 = lispEvalAST(parseExpression(parseTokens("(if (>= #xFF #xFF) 'yes 'no)")).result[0])
         self.assertTrue(valCmp3.value.text == "yes")
 
-        valCmp4 = lispEval(parseExpression(parseTokens("(if (> #xFF #o77777) 'yes 'no)")).result[0])
+        valCmp4 = lispEvalAST(parseExpression(parseTokens("(if (> #xFF #o77777) 'yes 'no)")).result[0])
         self.assertTrue(valCmp4.value.text == "no")
 
-        valCmp5 = lispEval(parseExpression(parseTokens("(if (= #xF 15 #b1111) 'yes 'no)")).result[0])
+        valCmp5 = lispEvalAST(parseExpression(parseTokens("(if (= #xF 15 #b1111) 'yes 'no)")).result[0])
         self.assertTrue(valCmp5.value.text == "yes")
 
-        valCmp6 = lispEval(parseExpression(parseTokens("(if (= #xFF 12) 'yes 'no)")).result[0])
+        valCmp6 = lispEvalAST(parseExpression(parseTokens("(if (= #xFF 12) 'yes 'no)")).result[0])
         self.assertTrue(valCmp6.value.text == "no")
 
-        valCond1 = lispEval(parseExpression(parseTokens("(cond (#f 'no))")).result[0])
+        valCond1 = lispEvalAST(parseExpression(parseTokens("(cond (#f 'no))")).result[0])
         self.assertTrue(valCond1.valueType == LispValueTypes.Void)
         
-        valCond2 = lispEval(parseExpression(parseTokens("(cond (#f 'no) (#t 'yes) (#t 'maybe?))")).result[0])
+        valCond2 = lispEvalAST(parseExpression(parseTokens("(cond (#f 'no) (#t 'yes) (#t 'maybe?))")).result[0])
         self.assertTrue(valCond2.value.text == "yes")
 
-        valCond3 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((< 2 1) 'oops) (else 'a 'b 'cee))")).result[0])
+        valCond3 = lispEvalAST(parseExpression(parseTokens("(cond (#f 'no) ((< 2 1) 'oops) (else 'a 'b 'cee))")).result[0])
         self.assertTrue(valCond3.value.text == "cee")
 
-        valCond4 = lispEval(parseExpression(parseTokens("(cond (#f 'no) ((+ 2 2) => (lambda (x) (+ x 2))) (else 'a 'b 'cee))")).result[0])
+        valCond4 = lispEvalAST(parseExpression(parseTokens("(cond (#f 'no) ((+ 2 2) => (lambda (x) (+ x 2))) (else 'a 'b 'cee))")).result[0])
         self.assertTrue(self.isEqual(valCond4.value, 6, 0))
 
     def testPrimitivesCoreArithmetics(self):
-        val1 = lispEval(parseExpression(parseTokens("(/ 3)")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(/ 3)")).result[0])
         self.assertTrue(val1.value.real.numerator == 1 and val1.value.real.denominator == 3)
 
-        val2 = lispEval(parseExpression(parseTokens("(/ 64 2 4 8)")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(/ 64 2 4 8)")).result[0])
         self.assertTrue(self.isEqual(val2.value, 1, 0))
         
     def testPrimitivesEquality(self):
-        valEqv1 = lispEval(parseExpression(parseTokens("((lambda (x) (if (eqv? 'allo x) 'yes 'no)) 'allo)")).result[0])
+        valEqv1 = lispEvalAST(parseExpression(parseTokens("((lambda (x) (if (eqv? 'allo x) 'yes 'no)) 'allo)")).result[0])
         self.assertTrue(valEqv1.value.text == "yes")
 
-        valEqv2 = lispEval(parseExpression(parseTokens("(eqv? \"allo\" \"allo\")")).result[0])
+        valEqv2 = lispEvalAST(parseExpression(parseTokens("(eqv? \"allo\" \"allo\")")).result[0])
         self.assertTrue(valEqv2.value)
 
-        valEqv3 = lispEval(parseExpression(parseTokens("(eqv? '() '())")).result[0])
+        valEqv3 = lispEvalAST(parseExpression(parseTokens("(eqv? '() '())")).result[0])
         self.assertTrue(valEqv3.value)
 
-        valEqual1 = lispEval(parseExpression(parseTokens("(equal? '(a b cc 1.2+i #(3 #\\d)) '(a b cc 1.2+i #(3 #\\d)))")).result[0])
+        valEqual1 = lispEvalAST(parseExpression(parseTokens("(equal? '(a b cc 1.2+i #(3 #\\d)) '(a b cc 1.2+i #(3 #\\d)))")).result[0])
         self.assertTrue(valEqual1.value)
 
-        valEqual2 = lispEval(parseExpression(parseTokens("(equal? '(`(#f #t . 123) c . #()) '(`(#f #t . 123) c . #()))")).result[0])
+        valEqual2 = lispEvalAST(parseExpression(parseTokens("(equal? '(`(#f #t . 123) c . #()) '(`(#f #t . 123) c . #()))")).result[0])
         self.assertTrue(valEqual2.value)
 
     def testPrimitivesPredicates(self):
-        valPred1 = lispEval(parseExpression(parseTokens("(number? 123.01+i)")).result[0])
+        valPred1 = lispEvalAST(parseExpression(parseTokens("(number? 123.01+i)")).result[0])
         self.assertTrue(valPred1.value)
 
-        valPred2 = lispEval(parseExpression(parseTokens("(number? 'hello)")).result[0])
+        valPred2 = lispEvalAST(parseExpression(parseTokens("(number? 'hello)")).result[0])
         self.assertFalse(valPred2.value)
 
-        valPred3 = lispEval(parseExpression(parseTokens("(char? #\\a)")).result[0])
+        valPred3 = lispEvalAST(parseExpression(parseTokens("(char? #\\a)")).result[0])
         self.assertTrue(valPred3.value)
 
-        valPred4 = lispEval(parseExpression(parseTokens("(char? \"a\")")).result[0])
+        valPred4 = lispEvalAST(parseExpression(parseTokens("(char? \"a\")")).result[0])
         self.assertFalse(valPred4.value)
 
-        valPred5 = lispEval(parseExpression(parseTokens("(boolean? #f)")).result[0])
+        valPred5 = lispEvalAST(parseExpression(parseTokens("(boolean? #f)")).result[0])
         self.assertTrue(valPred5.value)
 
-        valPred6 = lispEval(parseExpression(parseTokens("(boolean? 'false)")).result[0])
+        valPred6 = lispEvalAST(parseExpression(parseTokens("(boolean? 'false)")).result[0])
         self.assertFalse(valPred6.value)
 
-        valPred7 = lispEval(parseExpression(parseTokens("(string? \"yes\")")).result[0])
+        valPred7 = lispEvalAST(parseExpression(parseTokens("(string? \"yes\")")).result[0])
         self.assertTrue(valPred7.value)
 
-        valPred7 = lispEval(parseExpression(parseTokens("(string? 'false)")).result[0])
+        valPred7 = lispEvalAST(parseExpression(parseTokens("(string? 'false)")).result[0])
         self.assertFalse(valPred6.value)
 
-        valPred8 = lispEval(parseExpression(parseTokens("(pair? '(a b c))")).result[0])
+        valPred8 = lispEvalAST(parseExpression(parseTokens("(pair? '(a b c))")).result[0])
         self.assertTrue(valPred8.value)
 
-        valPred9 = lispEval(parseExpression(parseTokens("(pair? 'false)")).result[0])
+        valPred9 = lispEvalAST(parseExpression(parseTokens("(pair? 'false)")).result[0])
         self.assertFalse(valPred9.value)
 
-        valPred10 = lispEval(parseExpression(parseTokens("(vector? '#(a b c))")).result[0])
+        valPred10 = lispEvalAST(parseExpression(parseTokens("(vector? '#(a b c))")).result[0])
         self.assertTrue(valPred10.value)
 
-        valPred11 = lispEval(parseExpression(parseTokens("(vector? '(a b c))")).result[0])
+        valPred11 = lispEvalAST(parseExpression(parseTokens("(vector? '(a b c))")).result[0])
         self.assertFalse(valPred11.value)
 
-        valPred12 = lispEval(parseExpression(parseTokens("(procedure? +)")).result[0])
+        valPred12 = lispEvalAST(parseExpression(parseTokens("(procedure? +)")).result[0])
         self.assertTrue(valPred12.value)
 
-        valPred13 = lispEval(parseExpression(parseTokens("(procedure? '+)")).result[0])
+        valPred13 = lispEvalAST(parseExpression(parseTokens("(procedure? '+)")).result[0])
         self.assertFalse(valPred13.value)
 
     def testLet(self):
-        valLet1 = lispEval(parseExpression(parseTokens("(let ((x 1)) (= x 1))")).result[0])
+        valLet1 = lispEvalAST(parseExpression(parseTokens("(let ((x 1)) (= x 1))")).result[0])
         self.assertTrue(valLet1.value)
 
-        valLet2 = lispEval(parseExpression(parseTokens("(let ((x 1) (y 2) (z 3)) (+ x y z))")).result[0])
+        valLet2 = lispEvalAST(parseExpression(parseTokens("(let ((x 1) (y 2) (z 3)) (+ x y z))")).result[0])
         self.assertTrue(self.isEqual(valLet2.value, 6, 0))
 
-        valLet3 = lispEval(parseExpression(parseTokens("(let* ((x 1) (y (+ x 1))) (+ x y))")).result[0])
+        valLet3 = lispEvalAST(parseExpression(parseTokens("(let* ((x 1) (y (+ x 1))) (+ x y))")).result[0])
         self.assertTrue(self.isEqual(valLet3.value, 3, 0))
 
-        valLet4 = lispEval(parseExpression(parseTokens("(letrec ((fact (lambda (n) (if (<= n 1) 1 (* n (fact (- n 1))))))) (fact 4))")).result[0])
+        valLet4 = lispEvalAST(parseExpression(parseTokens("(letrec ((fact (lambda (n) (if (<= n 1) 1 (* n (fact (- n 1))))))) (fact 4))")).result[0])
         self.assertTrue(self.isEqual(valLet4.value, 24, 0))
 
     def testAndOr(self):
-        val1 = lispEval(parseExpression(parseTokens("(and #t 1.0 (< 1 2))")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(and #t 1.0 (< 1 2))")).result[0])
         self.assertTrue(val1)
 
-        val2 = lispEval(parseExpression(parseTokens("(or #f (> 1 2) (+ 0 0))")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(or #f (> 1 2) (+ 0 0))")).result[0])
         self.assertTrue(self.isEqual(val2.value, 0, 0))
 
     def testBegin(self):
-        val1 = lispEval(parseExpression(parseTokens("(begin 1)")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(begin 1)")).result[0])
         self.assertTrue(self.isEqual(val1.value, 1, 0))
 
-        val2 = lispEval(parseExpression(parseTokens("(begin 'a (+ 1 2) #t)")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(begin 'a (+ 1 2) #t)")).result[0])
         self.assertTrue(val2.valueType)
 
     def testNumberPredicates(self):
-        val1 = lispEval(parseExpression(parseTokens("(complex? 1+i)")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(complex? 1+i)")).result[0])
         self.assertTrue(val1.value)
 
-        val2 = lispEval(parseExpression(parseTokens("(complex? #xabc)")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(complex? #xabc)")).result[0])
         self.assertTrue(val2.value)
 
-        val3 = lispEval(parseExpression(parseTokens("(real? 123e567)")).result[0])
+        val3 = lispEvalAST(parseExpression(parseTokens("(real? 123e567)")).result[0])
         self.assertTrue(val3.value)
 
-        val4 = lispEval(parseExpression(parseTokens("(real? 1.135)")).result[0])
+        val4 = lispEvalAST(parseExpression(parseTokens("(real? 1.135)")).result[0])
         self.assertTrue(val4.value)
 
-        val5 = lispEval(parseExpression(parseTokens("(real? #b101001)")).result[0])
+        val5 = lispEvalAST(parseExpression(parseTokens("(real? #b101001)")).result[0])
         self.assertTrue(val5.value)
 
-        val6 = lispEval(parseExpression(parseTokens("(real? 1+i)")).result[0])
+        val6 = lispEvalAST(parseExpression(parseTokens("(real? 1+i)")).result[0])
         self.assertFalse(val6.value)
 
-        val7 = lispEval(parseExpression(parseTokens("(rational? 12/34)")).result[0])
+        val7 = lispEvalAST(parseExpression(parseTokens("(rational? 12/34)")).result[0])
         self.assertTrue(val7.value)
 
-        val8 = lispEval(parseExpression(parseTokens("(rational? #x123abc)")).result[0])
+        val8 = lispEvalAST(parseExpression(parseTokens("(rational? #x123abc)")).result[0])
         self.assertTrue(val8.value)
 
-        val9 = lispEval(parseExpression(parseTokens("(rational? 1.234)")).result[0])
+        val9 = lispEvalAST(parseExpression(parseTokens("(rational? 1.234)")).result[0])
         self.assertFalse(val9.value)
 
-        val10 = lispEval(parseExpression(parseTokens("(integer? 123)")).result[0])
+        val10 = lispEvalAST(parseExpression(parseTokens("(integer? 123)")).result[0])
         self.assertTrue(val10.value)
 
-        val11 = lispEval(parseExpression(parseTokens("(integer? #x123)")).result[0])
+        val11 = lispEvalAST(parseExpression(parseTokens("(integer? #x123)")).result[0])
         self.assertTrue(val11.value)
 
-        val12 = lispEval(parseExpression(parseTokens("(integer? 1.234)")).result[0])
+        val12 = lispEvalAST(parseExpression(parseTokens("(integer? 1.234)")).result[0])
         self.assertFalse(val12.value)
 
-        val13 = lispEval(parseExpression(parseTokens("(integer? 12/34)")).result[0])
+        val13 = lispEvalAST(parseExpression(parseTokens("(integer? 12/34)")).result[0])
         self.assertFalse(val13.value)
 
-        val14 = lispEval(parseExpression(parseTokens("(exact? 12/34)")).result[0])
+        val14 = lispEvalAST(parseExpression(parseTokens("(exact? 12/34)")).result[0])
         self.assertTrue(val14.value)
 
-        val15 = lispEval(parseExpression(parseTokens("(exact? 1e10)")).result[0])
+        val15 = lispEvalAST(parseExpression(parseTokens("(exact? 1e10)")).result[0])
         self.assertFalse(val15.value)
 
-        val16 = lispEval(parseExpression(parseTokens("(inexact? 1.3e-5)")).result[0])
+        val16 = lispEvalAST(parseExpression(parseTokens("(inexact? 1.3e-5)")).result[0])
         self.assertTrue(val16.value)
 
-        val17 = lispEval(parseExpression(parseTokens("(inexact? #b1010)")).result[0])
+        val17 = lispEvalAST(parseExpression(parseTokens("(inexact? #b1010)")).result[0])
         self.assertFalse(val17.value)
 
     def testOtherNumPredicates(self):
-        val1 = lispEval(parseExpression(parseTokens("(zero? 0e10)")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(zero? 0e10)")).result[0])
         self.assertTrue(val1.value)
 
-        val2 = lispEval(parseExpression(parseTokens("(zero? 2+i)")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(zero? 2+i)")).result[0])
         self.assertFalse(val2.value)
 
-        val3 = lispEval(parseExpression(parseTokens("(positive? 2.3e-55)")).result[0])
+        val3 = lispEvalAST(parseExpression(parseTokens("(positive? 2.3e-55)")).result[0])
         self.assertTrue(val3.value)
 
-        val4 = lispEval(parseExpression(parseTokens("(positive? -5)")).result[0])
+        val4 = lispEvalAST(parseExpression(parseTokens("(positive? -5)")).result[0])
         self.assertFalse(val4.value)
 
-        val5 = lispEval(parseExpression(parseTokens("(negative? (- 5/6 1))")).result[0])
+        val5 = lispEvalAST(parseExpression(parseTokens("(negative? (- 5/6 1))")).result[0])
         self.assertTrue(val5.value)
 
     def testMinMaxAbs(self):
-        val1 = lispEval(parseExpression(parseTokens("(max 1 2 3 4 -3 -2))")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(max 1 2 3 4 -3 -2))")).result[0])
         self.assertTrue(self.isEqual(val1.value, 4, 0))
 
-        val2 = lispEval(parseExpression(parseTokens("(min 1 2 3 4 -3 -2))")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(min 1 2 3 4 -3 -2))")).result[0])
         self.assertTrue(self.isEqual(val2.value, -3, 0))
 
-        val3 = lispEval(parseExpression(parseTokens("(abs -10))")).result[0])
+        val3 = lispEvalAST(parseExpression(parseTokens("(abs -10))")).result[0])
         self.assertTrue(self.isEqual(val3.value, 10, 0))
 
-        val4 = lispEval(parseExpression(parseTokens("(abs #xF))")).result[0])
+        val4 = lispEvalAST(parseExpression(parseTokens("(abs #xF))")).result[0])
         self.assertTrue(self.isEqual(val4.value, 15, 0))
 
-        val5 = lispEval(parseExpression(parseTokens("(abs -1.23))")).result[0])
+        val5 = lispEvalAST(parseExpression(parseTokens("(abs -1.23))")).result[0])
         self.assertTrue(self.isEqual(val5.value, 1.23, 0))
 
     def testNumTheoryPrimitives(self):
-        val1 = lispEval(parseExpression(parseTokens("(quotient 14 3))")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(quotient 14 3))")).result[0])
         self.assertTrue(self.isEqual(val1.value, 4, 0))
 
-        val2 = lispEval(parseExpression(parseTokens("(quotient -14 3))")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(quotient -14 3))")).result[0])
         self.assertTrue(self.isEqual(val2.value, -4, 0))
 
-        val3 = lispEval(parseExpression(parseTokens("(remainder 13 4))")).result[0])
+        val3 = lispEvalAST(parseExpression(parseTokens("(remainder 13 4))")).result[0])
         self.assertTrue(self.isEqual(val3.value, 1, 0))
 
-        val4 = lispEval(parseExpression(parseTokens("(modulo 13 4))")).result[0])
+        val4 = lispEvalAST(parseExpression(parseTokens("(modulo 13 4))")).result[0])
         self.assertTrue(self.isEqual(val4.value, 1, 0))
 
-        val5 = lispEval(parseExpression(parseTokens("(remainder -13 4))")).result[0])
+        val5 = lispEvalAST(parseExpression(parseTokens("(remainder -13 4))")).result[0])
         self.assertTrue(self.isEqual(val5.value, -1, 0))
 
-        val6 = lispEval(parseExpression(parseTokens("(modulo -13 4))")).result[0])
+        val6 = lispEvalAST(parseExpression(parseTokens("(modulo -13 4))")).result[0])
         self.assertTrue(self.isEqual(val6.value, 3, 0))
 
-        val7 = lispEval(parseExpression(parseTokens("(remainder 13 -4))")).result[0])
+        val7 = lispEvalAST(parseExpression(parseTokens("(remainder 13 -4))")).result[0])
         self.assertTrue(self.isEqual(val7.value, 1, 0))
 
-        val8 = lispEval(parseExpression(parseTokens("(modulo 13 -4))")).result[0])
+        val8 = lispEvalAST(parseExpression(parseTokens("(modulo 13 -4))")).result[0])
         self.assertTrue(self.isEqual(val8.value, -3, 0))
 
-        val9 = lispEval(parseExpression(parseTokens("(remainder -13 -4))")).result[0])
+        val9 = lispEvalAST(parseExpression(parseTokens("(remainder -13 -4))")).result[0])
         self.assertTrue(self.isEqual(val9.value, -1, 0))
 
-        val10 = lispEval(parseExpression(parseTokens("(modulo -13 -4))")).result[0])
+        val10 = lispEvalAST(parseExpression(parseTokens("(modulo -13 -4))")).result[0])
         self.assertTrue(self.isEqual(val10.value, -1, 0))
 
-        val11 = lispEval(parseExpression(parseTokens("(remainder -13 -4.0))")).result[0])
+        val11 = lispEvalAST(parseExpression(parseTokens("(remainder -13 -4.0))")).result[0])
         self.assertTrue(self.isEqual(val11.value, -1, 0))
 
     def testGCDLCM(self):
-        val1 = lispEval(parseExpression(parseTokens("(gcd 32 -36))")).result[0])
+        val1 = lispEvalAST(parseExpression(parseTokens("(gcd 32 -36))")).result[0])
         self.assertTrue(self.isEqual(val1.value, 4, 0))
 
-        val2 = lispEval(parseExpression(parseTokens("(gcd))")).result[0])
+        val2 = lispEvalAST(parseExpression(parseTokens("(gcd))")).result[0])
         self.assertTrue(self.isEqual(val2.value, 0, 0))
 
-        val3 = lispEval(parseExpression(parseTokens("(lcm 32 -36))")).result[0])
+        val3 = lispEvalAST(parseExpression(parseTokens("(lcm 32 -36))")).result[0])
         self.assertTrue(self.isEqual(val3.value, 288, 0))
 
-        val4 = lispEval(parseExpression(parseTokens("(lcm 32.0 -36))")).result[0])
+        val4 = lispEvalAST(parseExpression(parseTokens("(lcm 32.0 -36))")).result[0])
         self.assertTrue(self.isEqual(val4.value, 288, 0))
 
-        val5 = lispEval(parseExpression(parseTokens("(lcm))")).result[0])
+        val5 = lispEvalAST(parseExpression(parseTokens("(lcm))")).result[0])
         self.assertTrue(self.isEqual(val5.value, 1, 0))
+
+    def testNumDenom(self):
+        val1 = lispEval("(numerator -5/3))")
+        self.assertTrue(self.isEqual(val1.value, -5, 0))
+
+        val2 = lispEval("(denominator -5/3))")
+        self.assertTrue(self.isEqual(val2.value, 3, 0))
+
+    def testFloorCeilingEtc(self):
+        val1 = lispEval("(floor -5/3))")
+        self.assertTrue(self.isEqual(val1.value, -2, 0))
+
+        val2 = lispEval("(ceiling -5/3))")
+        self.assertTrue(self.isEqual(val2.value, -1, 0))
+
+        val3 = lispEval("(truncate -5/3))")
+        self.assertTrue(self.isEqual(val3.value, -1, 0))
+
+        val4 = lispEval("(round -5/3))")
+        self.assertTrue(self.isEqual(val4.value, -2, 0))
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
