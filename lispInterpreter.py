@@ -53,6 +53,9 @@ class LispAST_Number(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
+    def evalk(self, env, k):
+        return k(self.eval(env))
+
     def getComplex(self):
         return self.real.getFloat() + (self.imag.getFloat() * 1j)
 
@@ -76,6 +79,9 @@ class LispAST_token(LispAST):
         valueType = tokenTypeToValue(self.tokenType)
         return LispEvalContext(env, LispValue(self.extra, valueType))
 
+    def evalk(self, env, k):
+        return k(self.eval(env))
+
 class LispAST_Variable:
     def __init__(self, id):
         self.id = id
@@ -91,6 +97,9 @@ class LispAST_Variable:
         else:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
             return LispEvalContext(env, LispValueVoid())
+
+    def evalk(self, env, k):
+        return k(self.eval(env))
 
 class LispAST_Datum(LispAST):
     def __init__(self, content):
@@ -171,6 +180,9 @@ class LispAST_Quotation(LispAST):
 
         return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
+    def evalk(self, env, k):
+        return k(self.eval(env))
+
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
         self.operator = operator
@@ -212,6 +224,15 @@ class LispAST_ProcedureCall(LispAST):
         
             bodyValue = funAst.body.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
+
+    # def evalk(self, env, k):
+    #     if len(self.operands) == 0:
+    #         newK = 
+    #         self.operator.eval(env, newK)
+    #     else:
+    #         newK = ...
+    #         self.operands[0].evalk(env, newK)
+
 
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
