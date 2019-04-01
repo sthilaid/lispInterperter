@@ -53,6 +53,9 @@ class LispAST_Number(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
+    def getComplex(self):
+        return self.real.getFloat() + (self.imag.getFloat() * 1j)
+
     def equals(self, other):
         return (self.radix == other.radix
                 and self.exactness == other.exactness
@@ -1494,6 +1497,9 @@ def lispMakePrimitive(id, pyFun):
 def lispMakeBoolValue(val):
     return LispValue(val, LispValueTypes.Boolean)
 
+def lispMakeString(val):
+    return LispValue(LispAST_token(LispTokenTypes.String, val, val), LispValueTypes.String)
+
 def lispMakeNumberValue(num, denom=1, imagNum=0, imagDenom=1):
     if np.isclose(denom, 1):
         denom = int(denom)
@@ -1932,7 +1938,7 @@ def lispPrimitive_ceiling(*numbers):
 @primitive("truncate")
 @primitivePrerequesite(lispPrimitive_isReal, "real")
 @exactArgCount(1)
-def lispPrimitive_round(*numbers):
+def lispPrimitive_truncate(*numbers):
     x       = numbers[0].value.real.getFloat()
     return lispMakeNumberValue(int(x))
 
@@ -1941,6 +1947,185 @@ def lispPrimitive_round(*numbers):
 @exactArgCount(1)
 def lispPrimitive_round(*numbers):
     return lispMakeNumberValue(np.round(numbers[0].value.real.getFloat()))
+
+@primitive("exp")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_exp(*numbers):
+    z = np.exp(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("log")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_log(*numbers):
+    z = np.log(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("sin")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_sin(*numbers):
+    z = np.sin(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("cos")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_cos(*numbers):
+    z = np.cos(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("tan")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_tan(*numbers):
+    z = np.tan(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("asin")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_asin(*numbers):
+    z = np.arcsin(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("acos")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_acos(*numbers):
+    z = np.arccos(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("atan")
+@allType(LispValueTypes.Number)
+def lispPrimitive_atan(*numbers):
+    argcount = len(numbers) == 1
+    if argcount == 1:
+        z = np.arctan(numbers[0].value.getComplex())
+        return lispMakeNumberValue(z.real, 1, z.imag, 1)
+    elif argcount == 2:
+        x = np.arctan2(numbers[0].value.real.getFloat(), numbers[1].value.real.getFloat())
+        return lispMakeNumberValue(x.real, 1, 0, 1)
+    else:
+        print("[LispEvalError] invalid arg count for atan. Expecting 1 or 2, got %d" % argcount)
+        return LispValueVoid()
+
+@primitive("sqrt")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_sqrt(*numbers):
+    z = np.sqrt(numbers[0].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("expt")
+@allType(LispValueTypes.Number)
+@exactArgCount(2)
+def lispPrimitive_expt(*numbers):
+    z = np.power(numbers[0].value.getComplex(), numbers[1].value.getComplex())
+    return lispMakeNumberValue(z.real, 1, z.imag, 1)
+
+@primitive("make-rectangular")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(2)
+def lispPrimitive_expt(*numbers):
+    return lispMakeNumberValue(numbers[0].value.real.getFloat(), 1, numbers[1].value.real.getFloat(), 1)
+
+@primitive("make-polar")
+@primitivePrerequesite(lispPrimitive_isReal, "real")
+@exactArgCount(2)
+def lispPrimitive_expt(*numbers):
+    r       = numbers[0].value.real.getFloat()
+    theta   = numbers[1].value.real.getFloat()
+    a = r * np.cos(theta)
+    b = r * np.sin(theta)
+    return lispMakeNumberValue(a, 1, b, 1)
+
+@primitive("real-part")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_complexReal(*numbers):
+    return lispMakeNumberValue(numbers[0].value.real.getFloat(), 1, 0, 1)
+
+@primitive("imag-part")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_complexImag(*numbers):
+    return lispMakeNumberValue(numbers[0].value.imag.getFloat(), 1, 0, 1)
+
+@primitive("magnitude")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_complexMagnitude(*numbers):
+    real = numbers[0].value.real.getFloat()
+    imag = numbers[0].value.imag.getFloat()
+    mag  = np.sqrt(real*real + imag*imag)
+    return lispMakeNumberValue(mag, 1, 0, 1)
+
+@primitive("angle")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_complexAngle(*numbers):
+    real    = numbers[0].value.real.getFloat()
+    imag    = numbers[0].value.imag.getFloat()
+    angle   = np.arctan2(imag, real)
+    return lispMakeNumberValue(angle, 1, 0, 1)
+
+@primitive("exact->inexact")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_exactInexact(*numbers):
+    if not numbers[0].value.exactness:
+        return numbers[0]
+    else:
+        return lispMakeNumberValue(numbers[0].value.real.getFloat(), 1, numbers[0].value.imag.getFloat(), 1)
+
+@primitive("inexact->exact")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_exactInexact(*numbers):
+    if numbers[0].value.exactness:
+        return numbers[0]
+    else:
+        def conv(n):
+            f   = n.getFloat()
+            base    = int(1e10)
+            big     = int(f * base)
+            gcd     = np.gcd(big, base)
+            return (big / gcd, base / gcd)
+        real_num, real_denom = conv(numbers[0].value.real)
+        imag_num, imag_denom = conv(numbers[0].value.imag)
+        return lispMakeNumberValue(real_num, real_denom, imag_num, imag_denom)
+
+@primitive("number->string")
+@allType(LispValueTypes.Number)
+@exactArgCount(1)
+def lispPrimitive_numToStr(*numbers):
+    def printFrac(n):
+        real_num    = n.getInt()
+        real_denom  = n.denominator
+        if np.isclose(real_denom, 1, atol=0.0001):
+            return "%d" % real_num
+        else:
+            return "%d/%d" % (real_num, real_denom)
+        
+    if numbers[0].value.exactness:
+        str = printFrac(numbers[0].value.real)
+        if not np.isclose(numbers[0].value.imag.getInt(), 0, atol=0.0001):
+            str += "+" + printFrac(numbers[0].value.imag) + "i"
+        return lispMakeString(str)
+    else:
+        str = "%s" % numbers[0].value.real.getFloat()
+        imag = numbers[0].value.imag.getFloat()
+        if not np.isclose(imag, 0, atol=0.0001):
+            str += "+%si" % imag
+        return lispMakeString(str)
+
+@primitive("string->number")
+@allType(LispValueTypes.String)
+@exactArgCount(1)
+def lispPrimitive_strToNum(*numbers):
+    return LispValue(lexNumber(numbers[0].value).extra, LispValueTypes.Number)
 
 ##-----------------------------------------------------------------------------
 ## equality procedures
@@ -2512,9 +2697,9 @@ class TestLispLex(unittest.TestCase):
 # parseDefinition(tokens):
 # parseQuasiQuotation(tokens):
 
-    def isEqual(self, n, r, i):
-        return (np.isclose(n.real.getFloat(), r)
-                and np.isclose(n.imag.getFloat(), i))
+    def isEqual(self, n, r, i, eps=0.0001):
+        return (np.isclose(n.real.getFloat(), r, atol=eps)
+                and np.isclose(n.imag.getFloat(), i, atol=eps))
 
     def testEval(self):
         val = lispEvalAST(parseExpression(parseTokens("12e3+5i")).result[0])
@@ -2853,6 +3038,47 @@ class TestLispLex(unittest.TestCase):
 
         val4 = lispEval("(round -5/3))")
         self.assertTrue(self.isEqual(val4.value, -2, 0))
+
+    def testNumFuns(self):
+        self.assertTrue(self.isEqual(lispEval("(exp 1))").value, 2.718281828459045, 0))
+        self.assertTrue(self.isEqual(lispEval("(exp 10))").value, 22026.465794806718, 0))
+        self.assertTrue(self.isEqual(lispEval("(log 2.718281828459045))").value, 1, 0))
+        self.assertTrue(self.isEqual(lispEval("(/ (log 100) (log 10))").value, 2, 0))
+        self.assertTrue(self.isEqual(lispEval("(sin 3.14159)").value, 0, 0))
+        self.assertTrue(self.isEqual(lispEval("(sin (* 3.14159 1/2))").value, 1, 0))
+        self.assertTrue(self.isEqual(lispEval("(cos 0)").value, 1, 0))
+        self.assertTrue(self.isEqual(lispEval("(cos (* 3.14159 1/2))").value, 0, 0))
+        self.assertTrue(self.isEqual(lispEval("(tan 3.14159)").value, 0, 0))
+        self.assertTrue(lispEval("(tan (* 3.141592653589793 1/2))").value.real.getFloat() > 10e10)
+        self.assertTrue(self.isEqual(lispEval("(asin 0)").value, 0, 0))
+        self.assertTrue(self.isEqual(lispEval("(asin 1)").value, 3.141592653589793 * 0.5, 0))
+        self.assertTrue(self.isEqual(lispEval("(acos 1)").value, 0, 0))
+        self.assertTrue(self.isEqual(lispEval("(acos 0)").value, 3.141592653589793 * 0.5, 0))
+        self.assertTrue(self.isEqual(lispEval("(sqrt 25)").value, 5, 0))
+        self.assertTrue(self.isEqual(lispEval("(sqrt 25+9i)").value, 5.07792, 0.8861))
+        self.assertTrue(self.isEqual(lispEval("(expt 2 8)").value, 256, 0))
+
+    def testComplexNum(self):
+        self.assertTrue(self.isEqual(lispEval("(make-rectangular 2 3.3)").value, 2, 3.3))
+        self.assertTrue(self.isEqual(lispEval("(make-polar 2 (* 3.14159 1/4))").value, np.sqrt(2), np.sqrt(2)))
+        self.assertTrue(self.isEqual(lispEval("(real-part 3+2i)").value, 3, 0))
+        self.assertTrue(self.isEqual(lispEval("(imag-part 3+2i)").value, 2, 0))
+        self.assertTrue(self.isEqual(lispEval("(magnitude 10+10i)").value, np.sqrt(2)*10, 0))
+        self.assertTrue(self.isEqual(lispEval("(angle 10+10i)").value, np.pi * 0.25, 0))
+
+    def testExactnessConvertion(self):
+        self.assertTrue(self.isEqual(lispEval("(exact->inexact 0.5)").value, 0.5, 0))
+        self.assertTrue(self.isEqual(lispEval("(exact->inexact 1/2)").value, 0.5, 0))
+        v = lispEval("(inexact->exact 0.5)").value
+        self.assertTrue(v.real.getInt() == 1 and v.real.denominator == 2)
+
+    def testNumStrConversions(self):
+        self.assertTrue(lispEval("(number->string 1/2)").value.extra == "1/2")
+        self.assertTrue(lispEval("(number->string 1/2+i)").value.extra == "1/2+1i")
+        self.assertTrue(lispEval("(number->string 0.5e3)").value.extra == "500.0")
+        self.assertTrue(lispEval("(number->string 0.123e-3+0.2i)").value.extra == "0.000123+0.2i")
+        self.assertTrue(self.isEqual(lispEval("(string->number \"1/2\")").value, 0.5, 0))
+        self.assertTrue(self.isEqual(lispEval("(string->number \"0.123+2e3i\")").value, 0.123, 2000))
 
 def runLispTests():
     unittest.TestLoader().loadTestsFromTestCase(TestLispLex).run(unittest.TextTestRunner(sys.stdout,True, 1).run(unittest.TestLoader().loadTestsFromTestCase(TestLispLex)))
