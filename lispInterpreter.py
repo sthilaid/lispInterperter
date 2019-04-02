@@ -53,8 +53,8 @@ class LispAST_Number(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
-    def evalk(self, env, k):
-        return k(self.eval(env))
+    def cps(self, k):
+        return LispAST_ProcedureCall(k, [self])
 
     def getComplex(self):
         return self.real.getFloat() + (self.imag.getFloat() * 1j)
@@ -79,8 +79,8 @@ class LispAST_token(LispAST):
         valueType = tokenTypeToValue(self.tokenType)
         return LispEvalContext(env, LispValue(self.extra, valueType))
 
-    def evalk(self, env, k):
-        return k(self.eval(env))
+    def cps(self, k):
+        return LispAST_ProcedureCall(k, [self])
 
 class LispAST_Variable:
     def __init__(self, id):
@@ -98,8 +98,8 @@ class LispAST_Variable:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
             return LispEvalContext(env, LispValueVoid())
 
-    def evalk(self, env, k):
-        return k(self.eval(env))
+    def cps(self, k):
+        return LispAST_ProcedureCall(k, [self])
 
 class LispAST_Datum(LispAST):
     def __init__(self, content):
@@ -110,12 +110,19 @@ class LispAST_Datum(LispAST):
         return "%s" % map(str, self.content)
 
 class LispAST_Symbol(LispAST):
-    def __init__(self, _, txt, __):
-        self.text = txt
+    def __init__(self, _, txt, __, isInternal=False):
+        self.text       = txt
+        self.isInternal = isInternal
     def __repr__(self):
         return "LispAST_Symbol(%s)" % self.text
     def __str__(self):
-        return self.text
+        return "|%s|" % self.text if self.isInternal else self.text
+
+    @staticmethod
+    def makeInternal(txt):
+        r = np.random.randint(np.iinfo(np.int32).max)
+        randTxt = txt+r
+        return LispAST_Symbol(randTxt, randTxt, randTxt, True);
 
 class LispAST_List(LispAST):
     def __init__(self, head, tail):
@@ -180,8 +187,8 @@ class LispAST_Quotation(LispAST):
 
         return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
-    def evalk(self, env, k):
-        return k(self.eval(env))
+    def cps(self, k):
+        return LispAST_ProcedureCall(k, [self])
 
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
@@ -225,14 +232,11 @@ class LispAST_ProcedureCall(LispAST):
             bodyValue = funAst.body.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
 
-    # def evalk(self, env, k):
-    #     if len(self.operands) == 0:
-    #         newK = 
-    #         self.operator.eval(env, newK)
-    #     else:
-    #         newK = ...
-    #         self.operands[0].evalk(env, newK)
-
+    def cps(self, k):
+        vars = list(map(lambda op: LispAST_Symbol.makeInternal("arg"), self.operands))
+        kont = LispAST_ProcedureCall(self.operator, vars, k)
+        for op in self.operands:
+            kont = 
 
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
@@ -2209,7 +2213,8 @@ def lispPrimitive_eqv(*args):
     elif args[0].valueType == LispValueTypes.String:
         return lispPrimitive_equalStr(LispValueTypes.String, lambda s: s.value, *args)
     elif args[0].valueType == LispValueTypes.Symbol:
-        return lispPrimitive_equalStr(LispValueTypes.Symbol, lambda s: s.value.text, *args)
+        isSameInternal = args[0].value.isInternal == args[1].value.isInternal
+        return isSameInternal and lispPrimitive_equalStr(LispValueTypes.Symbol, lambda s: s.value.text, *args)
     elif args[0].valueType == LispValueTypes.Pair:
         if (lispPrimitive_null(args[0]).value
             and lispPrimitive_null(args[1]).value):
