@@ -53,8 +53,8 @@ class LispAST_Number(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
-    def cps(self, k):
-        return LispAST_ProcedureCall(k, [self])
+    def toCPS(self):
+        return self
 
     def getComplex(self):
         return self.real.getFloat() + (self.imag.getFloat() * 1j)
@@ -79,8 +79,8 @@ class LispAST_token(LispAST):
         valueType = tokenTypeToValue(self.tokenType)
         return LispEvalContext(env, LispValue(self.extra, valueType))
 
-    def cps(self, k):
-        return LispAST_ProcedureCall(k, [self])
+    def toCPS(self):
+        return self
 
 class LispAST_Variable:
     def __init__(self, id):
@@ -98,8 +98,8 @@ class LispAST_Variable:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
             return LispEvalContext(env, LispValueVoid())
 
-    def cps(self, k):
-        return LispAST_ProcedureCall(k, [self])
+    def toCPS(self):
+        return self
 
 class LispAST_Datum(LispAST):
     def __init__(self, content):
@@ -187,8 +187,8 @@ class LispAST_Quotation(LispAST):
 
         return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
-    def cps(self, k):
-        return LispAST_ProcedureCall(k, [self])
+    def toCPS(self):
+        return self
 
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
@@ -199,7 +199,7 @@ class LispAST_ProcedureCall(LispAST):
     def __str__(self):
         return "(%s, %s)" % (self.operator, self.operands)
 
-    def eval(self, env):
+    def eval(self, env, k=False):
         fun     = self.operator.eval(env)
         if not fun or (fun.value.valueType != LispValueTypes.Procedure
                        and fun.value.valueType != LispValueTypes.Primitive):
@@ -229,15 +229,26 @@ class LispAST_ProcedureCall(LispAST):
                 if hasRest:
                     newEnv[funAst.formals.rest.id] = LispValue(LispAST_List(args[varsCount:], False), LispValueTypes.Pair)
         
-            bodyValue = funAst.body.eval(newEnv)
+            bodyValue = funAst.body.eval(newEnv, k)
             return LispEvalContext(env, bodyValue.value)
 
-    def cps(self, k):
+    def toCPS(self, kont):
         vars = list(map(lambda op: LispAST_Symbol.makeInternal("arg"), self.operands))
-        kont = LispAST_ProcedureCall(self.operator, vars, k)
-        for op in self.operands:
-            kont = 
+        opKontVar = LispAST_Symbol.makeInternal("operator")
+        currentK = lispMakeContinuation(opKontVar, LispAST_ProcedureCall(opKontVar, vars, kont))
+        currentAST = self.operator.toCPS(currentK)
+        
+        for i in range(len(self.operands)):
+            currentK    = lispMakeContinuation(vars[i],
+                                               LispAST_ProcedureCall(currentK, [arg])
+                        self.operands[i].toCPS(currentK))
+            currentAST = op.toCPS(lispMakeContinuation())
 
+def lispMakeContinuation(var, body, k):
+    return LispAST_LambdaExpression(LispAST_Formals(self, False, [var], False),
+                                    body,
+                                    k)
+    
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
         self.varlist = varlist
@@ -270,38 +281,33 @@ class LispAST_Body(LispAST):
         return LispEvalContext(newEnv, currentVal.value)
 
 class LispAST_LambdaExpression(LispAST):
-    def __init__(self, formals, body):
+    def __init__(self, formals, body, continuation=False):
         self.formals = formals
         self.body = body
+        self.continuation = continuation
     def __repr__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body)
+        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.continuation)
     def __str__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body)
+        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.continuation)
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
 
 class LispAST_Primitive(LispAST):
-    def __init__(self, name, pyFun, argCount = False):
+    def __init__(self, name, pyFun, continuation = False):
         self.name = name
         self.pyFun = pyFun
-        self.argCount = argCount
+        self.continuation = continuation
     def __repr__(self):
-        return "LispAST_Primitive(%s,%s)" % ( self.name, self.argCount)
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.continuation)
     def __str__(self):
-        return "LispAST_Primitive(%s,%s)" % ( self.name, self.argCount)
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.continuation)
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Primitive))
 
     def apply(self, args):
-        validArgNum = (len(args) == self.argCount) if self.argCount else True
-        if not validArgNum:
-            print("[LispEvalError] Invalid argment count for primitive %s. Expecting %d, got %d."
-                  % (self.name, self.argCount, len(args)))
-            return LispEvalContext([], LispValueVoid())
-        else:
-            return LispEvalContext([], self.pyFun(*args))
+        return LispEvalContext([], self.pyFun(*args))
 
 def lispIsFalse(val):
     return val.valueType == LispValueTypes.Boolean and not val.value
