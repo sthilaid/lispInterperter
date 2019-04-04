@@ -193,7 +193,7 @@ class LispAST_Quotation(LispAST):
 
         return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
-    def toCPS(self):
+    def toCPS(self, k):
         self.k = k
         return self
 
@@ -297,6 +297,10 @@ class LispAST_LambdaExpression(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
 
+    def toCPS(self, k):
+        self.k = k
+        return self
+
 class LispAST_Primitive(LispAST):
     def __init__(self, name, pyFun):
         self.name   = name
@@ -312,6 +316,10 @@ class LispAST_Primitive(LispAST):
 
     def apply(self, args):
         return LispEvalContext([], self.pyFun(*args))
+
+    def toCPS(self, k):
+        self.k = k
+        return self
 
 def lispIsFalse(val):
     return val.valueType == LispValueTypes.Boolean and not val.value
@@ -334,6 +342,11 @@ class LispAST_Conditional(LispAST):
         else:
             return self.alternate.eval(env)
 
+    def toCPS(self, k):
+        testVal = LispAST_Symbol.makeInternal("test")
+        kont = lispMakeContinuation(opVal, LispAST_Conditional(testVal, self.consequent.toCPS(k), self.alternate.toCPS(k), k)) # can't add k to conditionnal directly...!
+        return self.test.toCPS(kont);
+
 class LispAST_Assignement(LispAST):
     def __init__(self, var, exp):
         self.var = var
@@ -348,6 +361,11 @@ class LispAST_Assignement(LispAST):
         expValue = self.exp.eval(newEnv)
         newEnv[self.var.id] = expValue.value
         return LispEvalContext(newEnv, LispValueVoid())
+
+    def toCPS(self, k):
+        expVal = LispAST_Symbol.makeInternal("exp")
+        kont = lispMakeContinuation(expVal, LispAST_Assignement(self.var, self.exp.toCPS(k)))
+        return self.test.toCPS(kont);
 
 class LispAST_Definition:
     def __init__(self, var, body):
