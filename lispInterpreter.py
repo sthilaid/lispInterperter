@@ -45,6 +45,7 @@ class LispAST_Number(LispAST):
         self.real = real
         self.imag = imag
         self.text = text
+        self.k    = False
     def __repr__(self):
         return "LispAST_Number(%s,%s,%s,%s,\"%s\")" % ( self.radix, self.exactness, self.real, self.imag, self.text)
     def __str__(self):
@@ -53,7 +54,8 @@ class LispAST_Number(LispAST):
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Number))
 
-    def toCPS(self):
+    def toCPS(self, k):
+        self.k = k
         return self
 
     def getComplex(self):
@@ -68,8 +70,9 @@ class LispAST_Number(LispAST):
 class LispAST_token(LispAST):
     def __init__(self, tokenType, text, extra = []):
         self.tokenType = tokenType
-        self.text = text
-        self.extra = extra
+        self.text   = text
+        self.extra  = extra
+        self.k      = False
     def __repr__(self):
         return "LispAST_token(%s, \"%s\", %s)" % (self.tokenType, self.text, self.extra)
     def __str__(self):
@@ -79,7 +82,8 @@ class LispAST_token(LispAST):
         valueType = tokenTypeToValue(self.tokenType)
         return LispEvalContext(env, LispValue(self.extra, valueType))
 
-    def toCPS(self):
+    def toCPS(self, k):
+        self.k = k
         return self
 
 class LispAST_Variable:
@@ -98,7 +102,8 @@ class LispAST_Variable:
             print("[LispEvalError]: Unknown variable: %s" % self.id)
             return LispEvalContext(env, LispValueVoid())
 
-    def toCPS(self):
+    def toCPS(self, k):
+        self.k = k
         return self
 
 class LispAST_Datum(LispAST):
@@ -156,6 +161,7 @@ class LispAST_Abbreviation(LispAST):
 class LispAST_Quotation(LispAST):
     def __init__(self, datum):
         self.datum  = datum
+        self.k      = False
     def __repr__(self):
         return "LispAST_Quotation(%s)" % (self.datum)
     def __str__(self):
@@ -188,18 +194,20 @@ class LispAST_Quotation(LispAST):
         return LispEvalContext(env, LispValue(self.datum, datumValueType))
 
     def toCPS(self):
+        self.k = k
         return self
 
 class LispAST_ProcedureCall(LispAST):
     def __init__(self, operator, operands):
-        self.operator = operator
-        self.operands = operands
+        self.operator   = operator
+        self.operands   = operands
+        self.k          = False
     def __repr__(self):
         return "LispAST_ProcedureCall(%s, %s)" % (self.operator, self.operands)
     def __str__(self):
         return "(%s, %s)" % (self.operator, self.operands)
 
-    def eval(self, env, k=False):
+    def eval(self, env):
         fun     = self.operator.eval(env)
         if not fun or (fun.value.valueType != LispValueTypes.Procedure
                        and fun.value.valueType != LispValueTypes.Primitive):
@@ -234,20 +242,16 @@ class LispAST_ProcedureCall(LispAST):
 
     def toCPS(self, kont):
         vars = list(map(lambda op: LispAST_Symbol.makeInternal("arg"), self.operands))
-        opKontVar = LispAST_Symbol.makeInternal("operator")
-        currentK = lispMakeContinuation(opKontVar, LispAST_ProcedureCall(opKontVar, vars, kont))
+        opVal = LispAST_Symbol.makeInternal("operator")
+        currentK = lispMakeContinuation(opVal, LispAST_ProcedureCall(opVal, vars, kont))
         currentAST = self.operator.toCPS(currentK)
         
         for i in range(len(self.operands)):
-            currentK    = lispMakeContinuation(vars[i],
-                                               LispAST_ProcedureCall(currentK, [arg])
-                        self.operands[i].toCPS(currentK))
-            currentAST = op.toCPS(lispMakeContinuation())
+            currentK    = lispMakeContinuation(vars[i], currentAST)
+            currentAST  = self.operands[i].toCPS(currentK)
 
-def lispMakeContinuation(var, body, k):
-    return LispAST_LambdaExpression(LispAST_Formals(self, False, [var], False),
-                                    body,
-                                    k)
+def lispMakeContinuation(var, body):
+    return LispAST_LambdaExpression(LispAST_Formals(self, False, [var], False), body)
     
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
@@ -281,27 +285,27 @@ class LispAST_Body(LispAST):
         return LispEvalContext(newEnv, currentVal.value)
 
 class LispAST_LambdaExpression(LispAST):
-    def __init__(self, formals, body, continuation=False):
-        self.formals = formals
-        self.body = body
-        self.continuation = continuation
+    def __init__(self, formals, body):
+        self.formals    = formals
+        self.body       = body
+        self.k          = False
     def __repr__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.continuation)
+        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.k)
     def __str__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.continuation)
+        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.k)
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
 
 class LispAST_Primitive(LispAST):
-    def __init__(self, name, pyFun, continuation = False):
-        self.name = name
-        self.pyFun = pyFun
-        self.continuation = continuation
+    def __init__(self, name, pyFun):
+        self.name   = name
+        self.pyFun  = pyFun
+        self.k      = False
     def __repr__(self):
-        return "LispAST_Primitive(%s,%s)" % ( self.name, self.continuation)
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.k)
     def __str__(self):
-        return "LispAST_Primitive(%s,%s)" % ( self.name, self.continuation)
+        return "LispAST_Primitive(%s,%s)" % ( self.name, self.k)
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Primitive))
