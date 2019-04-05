@@ -198,10 +198,10 @@ class LispAST_Quotation(LispAST):
         return self
 
 class LispAST_ProcedureCall(LispAST):
-    def __init__(self, operator, operands):
+    def __init__(self, operator, operands, kont=False):
         self.operator   = operator
         self.operands   = operands
-        self.k          = False
+        self.k          = kont
     def __repr__(self):
         return "LispAST_ProcedureCall(%s, %s)" % (self.operator, self.operands)
     def __str__(self):
@@ -236,8 +236,9 @@ class LispAST_ProcedureCall(LispAST):
                     newEnv[funAst.formals.vars[i].id] = args[i]
                 if hasRest:
                     newEnv[funAst.formals.rest.id] = LispValue(LispAST_List(args[varsCount:], False), LispValueTypes.Pair)
-        
-            bodyValue = funAst.body.eval(newEnv, k)
+
+            cpsBody = funAst.body.toCPS(self.k)
+            bodyValue = cpsBody.eval(newEnv) # FIXME...?
             return LispEvalContext(env, bodyValue.value)
 
     def toCPS(self, kont):
@@ -284,6 +285,14 @@ class LispAST_Body(LispAST):
             newEnv      = currentVal.env
         return LispEvalContext(newEnv, currentVal.value)
 
+    def toCPS(self, k):
+        vars = list(map(lambda op: LispAST_Symbol.makeInternal("bodyExp"), self.body))
+        currentK = k # last body exp, is the tail call, calls the body continuation
+        for i in range(len(self.body)-1, -1, -1):
+            bVal = LispAST_Symbol.makeInternal("bodyVal")
+            currentAST  = self.body[i].toCPS(currentK)
+            currentK    = lispMakeContinuation(bVal, currentAST)
+
 class LispAST_LambdaExpression(LispAST):
     def __init__(self, formals, body):
         self.formals    = formals
@@ -325,10 +334,11 @@ def lispIsFalse(val):
     return val.valueType == LispValueTypes.Boolean and not val.value
 
 class LispAST_Conditional(LispAST):
-    def __init__(self, test, consequent, alternate):
+    def __init__(self, test, consequent, alternate, kont = False):
         self.test = test
         self.consequent = consequent
         self.alternate = alternate
+        self.k = kont # used when void branch is evaluated
     def __repr__(self):
         return "LispAST_Conditional(%s,%s,%s)" % ( self.test, self.consequent, self.alternate)
     def __str__(self):
@@ -344,7 +354,9 @@ class LispAST_Conditional(LispAST):
 
     def toCPS(self, k):
         testVal = LispAST_Symbol.makeInternal("test")
-        kont = lispMakeContinuation(opVal, LispAST_Conditional(testVal, self.consequent.toCPS(k), self.alternate.toCPS(k), k)) # can't add k to conditionnal directly...!
+        kont = lispMakeContinuation(opVal, LispAST_Conditional(testVal,
+                                                               self.consequent.toCPS(k),
+                                                               self.alternate.toCPS(k), k))
         return self.test.toCPS(kont);
 
 class LispAST_Assignement(LispAST):
@@ -2327,6 +2339,14 @@ def lispPrimevalEnv():
 
 def lispEvalAST(ast):
     return ast.eval(lispPrimevalEnv()).value
+
+def lispEvalAST_CPS(ast, k, env=lispPrimevalEnv()):
+    # tail call trampoline
+    val = ast.eval(env).value
+    while val.value.k:
+        kontAST = LispAST_ProcedureCall(val.value.k, val.value)
+        val = kontAST.eval(env).value
+    return val
 
 def lispEval(str):
     tokens = parseTokens(str)
