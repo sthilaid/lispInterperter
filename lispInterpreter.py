@@ -126,7 +126,7 @@ class LispAST_Symbol(LispAST):
     @staticmethod
     def makeInternal(txt):
         r = np.random.randint(np.iinfo(np.int32).max)
-        randTxt = txt+r
+        randTxt = "%s%d" % (txt, r)
         return LispAST_Symbol(randTxt, randTxt, randTxt, True);
 
 class LispAST_List(LispAST):
@@ -238,7 +238,7 @@ class LispAST_ProcedureCall(LispAST):
                     newEnv[funAst.formals.rest.id] = LispValue(LispAST_List(args[varsCount:], False), LispValueTypes.Pair)
 
             cpsBody = funAst.body.toCPS(self.k)
-            bodyValue = cpsBody.eval(newEnv) # FIXME...?
+            bodyValue = cpsBody.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
 
     def toCPS(self, kont):
@@ -250,9 +250,10 @@ class LispAST_ProcedureCall(LispAST):
         for i in range(len(self.operands)):
             currentK    = lispMakeContinuation(vars[i], currentAST)
             currentAST  = self.operands[i].toCPS(currentK)
+        return currentAST
 
 def lispMakeContinuation(var, body):
-    return LispAST_LambdaExpression(LispAST_Formals(self, False, [var], False), body)
+    return LispAST_LambdaExpression(LispAST_Formals(False, [var], False), body)
     
 class LispAST_Formals(LispAST):
     def __init__(self, varlist, vars, rest):
@@ -292,6 +293,7 @@ class LispAST_Body(LispAST):
             bVal = LispAST_Symbol.makeInternal("bodyVal")
             currentAST  = self.body[i].toCPS(currentK)
             currentK    = lispMakeContinuation(bVal, currentAST)
+        return currentAST
 
 class LispAST_LambdaExpression(LispAST):
     def __init__(self, formals, body):
@@ -354,15 +356,16 @@ class LispAST_Conditional(LispAST):
 
     def toCPS(self, k):
         testVal = LispAST_Symbol.makeInternal("test")
-        kont = lispMakeContinuation(opVal, LispAST_Conditional(testVal,
-                                                               self.consequent.toCPS(k),
-                                                               self.alternate.toCPS(k), k))
+        kont = lispMakeContinuation(testVal, LispAST_Conditional(testVal,
+                                                                 self.consequent.toCPS(k),
+                                                                 self.alternate.toCPS(k), k))
         return self.test.toCPS(kont);
 
 class LispAST_Assignement(LispAST):
-    def __init__(self, var, exp):
+    def __init__(self, var, exp, kont=False):
         self.var = var
         self.exp = exp
+        self.k   = kont
     def __repr__(self):
         return "LispAST_Assignement(%s,%s)" % ( self.var, self.exp)
     def __str__(self):
@@ -376,8 +379,8 @@ class LispAST_Assignement(LispAST):
 
     def toCPS(self, k):
         expVal = LispAST_Symbol.makeInternal("exp")
-        kont = lispMakeContinuation(expVal, LispAST_Assignement(self.var, self.exp.toCPS(k)))
-        return self.test.toCPS(kont);
+        kont = lispMakeContinuation(expVal, LispAST_Assignement(self.var, expVal, k))
+        return self.exp.toCPS(kont);
 
 class LispAST_Definition:
     def __init__(self, var, body):
@@ -403,6 +406,15 @@ class LispAST_Begin:
             res = self.body[i].eval(newEnv)
             newEnv, val = res.env, res.value
         return LispEvalContext(newEnv, val)
+
+    def toCPS(self, k):
+        vars = list(map(lambda op: LispAST_Symbol.makeInternal("bodyExp"), self.body))
+        currentK = k # last body exp, is the tail call, calls the body continuation
+        for i in range(len(self.body)-1, -1, -1):
+            bVal = LispAST_Symbol.makeInternal("bodyVal")
+            currentAST  = self.body[i].toCPS(currentK)
+            currentK    = lispMakeContinuation(bVal, currentAST)
+        return currentAST
 
 class LispAST_CondClause:
     def __init__(self, test, body, isAlternateForm):
@@ -453,6 +465,10 @@ class LispAST_Cond:
         else:
             return LispEvalContext(env, LispValueVoid())
 
+    def toCPS(self, k):
+        # todo
+        self.k = k
+        return self
 
 class LispAST_Binding:
     def __init__(self, var, expr):
@@ -498,6 +514,11 @@ class LispAST_Let:
 
         return self.body.eval(newEnv)
 
+    def toCPS(self, k):
+        # todo
+        self.k = k
+        return self
+
 class LispAST_andOr:
     def __init__(self, tests, isAnd):
         self.tests = tests
@@ -517,6 +538,10 @@ class LispAST_andOr:
                 return LispEvalContext(env, testVal)
         return LispEvalContext(env, lispMakeBoolValue(True if self.isAnd else False))
 
+    def toCPS(self, k):
+        # todo
+        self.k = k
+        return self
 
 ###############################################################################
 ## Lexing
@@ -2340,7 +2365,7 @@ def lispPrimevalEnv():
 def lispEvalAST(ast):
     return ast.eval(lispPrimevalEnv()).value
 
-def lispEvalAST_CPS(ast, k, env=lispPrimevalEnv()):
+def lispEvalAST_CPS(ast, k=False, env=lispPrimevalEnv()):
     # tail call trampoline
     val = ast.eval(env).value
     while val.value.k:
