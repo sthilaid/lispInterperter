@@ -123,6 +123,9 @@ class LispAST_Symbol(LispAST):
     def __str__(self):
         return "|%s|" % self.text if self.isInternal else self.text
 
+    def eval(self, env):
+        return LispEvalContext(env, LispValue(self, LispValueTypes.Symbol))
+
     @staticmethod
     def makeInternal(txt):
         r = np.random.randint(np.iinfo(np.int32).max)
@@ -221,7 +224,7 @@ class LispAST_ProcedureCall(LispAST):
             return funAst.apply(args)
             
         else: # LispValueTypes.Procedure
-            newEnv  = fun.env.copy()
+            newEnv  = fun.value.env.copy()
             if funAst.formals.varlist:
                 newEnv[funAst.formals.varlist.id] = LispValue(LispAST_List(args, False), LispValueTypes.Pair)
             else:
@@ -233,11 +236,13 @@ class LispAST_ProcedureCall(LispAST):
                           % (self.operator, varsCount, len(args)))
                     return LispValueVoid()
                 for i in range(varsCount):
-                    newEnv[funAst.formals.vars[i].id] = args[i]
+                    newEnv[funAst.formals.vars[i].text] = args[i]
                 if hasRest:
                     newEnv[funAst.formals.rest.id] = LispValue(LispAST_List(args[varsCount:], False), LispValueTypes.Pair)
 
-            cpsBody = funAst.body.toCPS(self.k)
+            # cpsBody = funAst.body.toCPS(self.k)
+            cpsBody = funAst.body
+            
             bodyValue = cpsBody.eval(newEnv)
             return LispEvalContext(env, bodyValue.value)
 
@@ -301,9 +306,9 @@ class LispAST_LambdaExpression(LispAST):
         self.body       = body
         self.k          = False
     def __repr__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.k)
+        return "LispAST_LambdaExpression(%s,%s,%s)" % ( self.formals, self.body, self.k)
     def __str__(self):
-        return "LispAST_LambdaExpression(%s,%s)" % ( self.formals, self.body, self.k)
+        return "LispAST_LambdaExpression(%s,%s,%s)" % ( self.formals, self.body, self.k)
 
     def eval(self, env):
         return LispEvalContext(env, LispValue(self, LispValueTypes.Procedure, env.copy()))
@@ -2365,13 +2370,16 @@ def lispPrimevalEnv():
 def lispEvalAST(ast):
     return ast.eval(lispPrimevalEnv()).value
 
-def lispEvalAST_CPS(ast, k=False, env=lispPrimevalEnv()):
+def lispEvalAST_CPS(ast, env=lispPrimevalEnv()):
     # tail call trampoline
-    val = ast.eval(env).value
-    while val.value.k:
-        kontAST = LispAST_ProcedureCall(val.value.k, val.value)
-        val = kontAST.eval(env).value
-    return val
+    context = ast.eval(env)
+    while context.value.value.k:
+        val = context.value
+        env = context.env
+        print("val: %s k: %s" % (val, val.value.k))
+        kontAST = LispAST_ProcedureCall(val.value.k, [val.value])
+        context = kontAST.eval(env)
+    return context.value
 
 def lispEval(str):
     tokens = parseTokens(str)
